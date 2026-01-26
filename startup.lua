@@ -1,5 +1,5 @@
--- PROJECT CATACLYSM: Tactical Reactor OS
-local VERSION = "2.0.0"
+-- PROJECT CATACLYSM: Tactical Reactor OS (Flicker-Free)
+local VERSION = "2.1.0"
 local GITHUB_URL = "https://raw.githubusercontent.com/caecitas-glitch/mein-campf-reactor/refs/heads/main/startup.lua"
 
 -- Peripherals
@@ -50,6 +50,7 @@ local function bootSequence()
         sleep(0.2)
     end
     sleep(1)
+    term.clear() -- Clear once before the loop starts
 end
 
 local function drawHeader(title, y, bg, fg)
@@ -81,8 +82,7 @@ local function run()
         
         history.matrixE, history.reactorF, history.reactorW, history.time = mE, rF, rW, now
 
-        -- 2. RENDERING
-        term.clear()
+        -- 2. RENDERING (No term.clear here!)
         drawHeader("CATACLYSM OS v" .. VERSION .. " | SYSTEM STABLE", 1, colors.cyan, colors.black)
 
         -- REACTOR SECTION
@@ -91,17 +91,18 @@ local function run()
         local rDmg = safeCall(reactor, "getDamage") or 0
         local rStatus = safeCall(reactor, "getStatus") and "ONLINE" or "OFFLINE"
         
-        term.setTextColor(colors.white)
-        term.setCursorPos(2, 4) term.write("STATUS: " .. rStatus)
-        term.setCursorPos(2, 5) term.write(string.format("CORE: %dK | DMG: %d%%", rTemp, rDmg))
+        term.setCursorPos(2, 4) term.clearLine() term.setTextColor(colors.white)
+        term.write("STATUS: " .. rStatus)
+        term.setCursorPos(2, 5) term.clearLine()
+        term.write(string.format("CORE: %dK | DMG: %d%%", rTemp, rDmg))
         
-        term.setCursorPos(2, 6)
+        term.setCursorPos(2, 6) term.clearLine()
         term.write("FUEL: " .. formatNum(rF) .. " mB ")
         term.setTextColor(trends.fuel < 0 and colors.red or colors.green)
         term.write("(" .. formatNum(trends.fuel) .. "/s)")
         
         term.setTextColor(colors.white)
-        term.setCursorPos(2, 7)
+        term.setCursorPos(2, 7) term.clearLine()
         term.write("WASTE: " .. formatNum(rW) .. " mB ")
         term.setTextColor(trends.waste > 0 and colors.orange or colors.green)
         term.write("(+" .. formatNum(trends.waste) .. "/s)")
@@ -112,17 +113,17 @@ local function run()
         local tGen = safeCall(turbine, "getProductionRate") or 0
         local tFlow = safeCall(turbine, "getFlowRate") or 0
         local tSteam = (safeCall(turbine, "getSteam") or {amount=0}).amount
-        term.setCursorPos(2, 10) term.write("OUTPUT: " .. formatNum(tGen) .. " FE/t")
-        term.setCursorPos(2, 11) term.write("FLOW: " .. formatNum(tFlow) .. " mB/t")
-        term.setCursorPos(2, 12) term.write("STEAM: " .. formatNum(tSteam) .. " mB")
+        term.setCursorPos(2, 10) term.clearLine() term.write("OUTPUT: " .. formatNum(tGen) .. " FE/t")
+        term.setCursorPos(2, 11) term.clearLine() term.write("FLOW: " .. formatNum(tFlow) .. " mB/t")
+        term.setCursorPos(2, 12) term.clearLine() term.write("STEAM: " .. formatNum(tSteam) .. " mB")
 
         -- MATRIX SECTION
         drawHeader("STORAGE GRID", 14, colors.purple)
         term.setTextColor(colors.white)
         local mMax = safeCall(matrix, "getMaxEnergy") or 1
-        term.setCursorPos(2, 15) term.write("STORE: " .. formatNum(mE) .. " / " .. formatNum(mMax))
+        term.setCursorPos(2, 15) term.clearLine() term.write("STORE: " .. formatNum(mE) .. " / " .. formatNum(mMax))
         
-        term.setCursorPos(2, 16)
+        term.setCursorPos(2, 16) term.clearLine()
         term.write("TREND: ")
         term.setTextColor(trends.energy >= 0 and colors.green or colors.red)
         term.write(formatNum(trends.energy) .. " FE/s")
@@ -130,7 +131,7 @@ local function run()
         -- PROGRESS BAR
         local barWidth = 24
         local fill = math.floor((mE / mMax) * barWidth)
-        term.setCursorPos(2, 17)
+        term.setCursorPos(2, 17) term.clearLine()
         term.setTextColor(colors.white)
         term.write("[")
         term.setBackgroundColor(colors.purple)
