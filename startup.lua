@@ -105,6 +105,7 @@ local function monitorCore()
             wMax = getSafe(reactor, "getWasteCapacity") or 1
         }
 
+        -- Iron-Strict Enforcement
         if data.dmg > 0 then isScrammed = true scramReason = "DMG!"
         elseif data.temp > 1150 then isScrammed = true scramReason = "HEAT!"
         elseif data.waste / data.wMax > 0.95 then isScrammed = true scramReason = "WASTE"
@@ -115,7 +116,7 @@ local function monitorCore()
         if isScrammed then pcall(reactor.setBurnRate, 0) pcall(reactor.scram) end
 
         drawUI(data)
-        sleep(0.5) -- Fast update, stable display
+        sleep(0.5) 
     end
 end
 
