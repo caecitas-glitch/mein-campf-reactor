@@ -79,37 +79,35 @@ local function addScram()
     f.close()
 end
 
--- === 5. MAIN LOOP ===
+-- === 5. MAIN LOOP (CLEANED) ===
 vaultStartup()
 
 while true do
-    -- 1. Gather Resource Tables
-    local fuelTbl    = reactor.getFuel() or {amount = 0, max = 0}
-    local wasteTbl   = reactor.getWaste() or {amount = 0, max = 0}
-    local coolantTbl = reactor.getCoolant() or {amount = 0, max = 0}
-    local steamTbl   = reactor.getSteam() or {amount = 0, max = 0}
-
-    -- 2. Extract Data using your safe() logic or direct table access
+    -- 1. Get Status and Basic Stats
     local status = reactor.getStatus()
     local tempC  = math.floor(safe(reactor.getTemperature()) - 273.15)
     local dmg    = safe(reactor.getDamagePercent())
     local burn   = safe(reactor.getBurnRate())
-    
-    -- Using the .max property from the tables retrieved above
-    local fMax = fuelTbl.max or 0
-    local wMax = wasteTbl.max or 0
-    local cMax = coolantTbl.max or 0
-    local sMax = steamTbl.max or 0
 
-    local fuelP    = (fMax > 0) and (fuelTbl.amount / fMax) or 0
-    local wasteP   = (wMax > 0) and (wasteTbl.amount / wMax) or 0
-    local coolantP = (cMax > 0) and (coolantTbl.amount / cMax) or 0
-    local steamP   = (sMax > 0) and (steamTbl.amount / sMax) or 0
+    -- 2. Fetch resource tables directly (ATM10/Modern Mekanism style)
+    -- This avoids calling the non-existent 'getSteamCapacity' functions
+    local fuel    = reactor.getFuel() or {amount = 0, max = 1}
+    local waste   = reactor.getWaste() or {amount = 0, max = 1}
+    local coolant = reactor.getCoolant() or {amount = 0, max = 1}
+    local steam   = reactor.getSteam() or {amount = 0, max = 1}
 
-    local eMax = safe(matrix.getMaxEnergy())
-    local energyPct = (eMax > 0) and (safe(matrix.getEnergy()) / eMax) or 0
+    -- 3. Calculate percentages using the .max property inside the tables
+    local fuelP    = (fuel.amount / fuel.max)
+    local wasteP   = (waste.amount / waste.max)
+    local coolantP = (coolant.amount / coolant.max)
+    local steamP   = (steam.amount / steam.max)
 
-    -- Failsafes
+    -- 4. Energy Matrix Logic
+    local energyVal = safe(matrix.getEnergy())
+    local energyMax = safe(matrix.getMaxEnergy())
+    local energyPct = (energyMax > 0) and (energyVal / energyMax) or 0
+
+    -- 5. Failsafes
     if status and (tempC > MAX_TEMP or dmg > 0 or energyPct > 0.98 or wasteP > 0.9) then
         reactor.scram()
         addScram()
@@ -147,4 +145,3 @@ while true do
 
     sleep(REFRESH)
 end
-
