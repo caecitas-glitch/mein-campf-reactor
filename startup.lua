@@ -2,7 +2,7 @@
 local VERSION = "17.0.0"
 
 -- 1. HARDWARE LINKING
-local device = term.current() -- Prevents the redirect error on tablets
+local device = term.current() -- Prevents redirect error on tablets
 local reactor = peripheral.find("fission_reactor_logic_adapter")
 local turbine = peripheral.find("turbine_valve")
 local matrix  = peripheral.find("induction_port")
@@ -69,7 +69,7 @@ local function drawUI(data)
     device.setCursorPos(1, 1)
     device.setBackgroundColor(isScrammed and colors.red or colors.blue)
     device.clearLine()
-    device.write(" AEGIS " .. VERSION .. " | " .. (isScrammed and scramReason or "CORE ACTIVE"))
+    device.write(" AEGIS OS v" .. VERSION .. " | " .. (isScrammed and scramReason or "ACTIVE"))
     device.setBackgroundColor(colors.black)
 
     -- Stats Array
@@ -105,23 +105,23 @@ end
 local function main()
     while true do
         local data = {
-            temp = getSafe(reactor, "getTemperature"),
-            dmg = getSafe(reactor, "getDamage"),
-            burn = getSafe(reactor, "getBurnRate"),
+            temp = getSafe(reactor, "getTemperature") or 0,
+            dmg = getSafe(reactor, "getDamage") or 0,
+            burn = getSafe(reactor, "getBurnRate") or 0,
             steam = getSafe(turbine, "getSteam") and turbine.getSteam().amount or 0,
             sMax = getSafe(turbine, "getSteamCapacity") or 1,
-            stored = getSafe(matrix, "getEnergy"),
-            maxE = getSafe(matrix, "getMaxEnergy"),
+            stored = getSafe(matrix, "getEnergy") or 0,
+            maxE = getSafe(matrix, "getMaxEnergy") or 1,
             waste = getSafe(reactor, "getWaste") and reactor.getWaste().amount or 0,
             wMax = getSafe(reactor, "getWasteCapacity") or 1
         }
 
         -- IRON-STRICT FAILSAFE
-        if (data.dmg or 0) > 0 then isScrammed = true scramReason = "DAMAGE"
-        elseif (data.temp or 0) > 1150 then isScrammed = true scramReason = "OVERHEAT"
+        if data.dmg > 0 then isScrammed = true scramReason = "DAMAGE"
+        elseif data.temp > 1150 then isScrammed = true scramReason = "OVERHEAT"
         elseif data.waste / data.wMax > 0.95 then isScrammed = true scramReason = "WASTE FULL"
         elseif data.steam / data.sMax > 0.98 then isScrammed = true scramReason = "STEAM FULL"
-        elseif (data.stored or 0) / (data.maxE or 1) > 0.99 then isScrammed = true scramReason = "GRID FULL"
+        elseif data.stored / data.maxE > 0.99 then isScrammed = true scramReason = "GRID FULL"
         end
 
         if isScrammed then pcall(reactor.setBurnRate, 0) pcall(reactor.scram) end
@@ -132,11 +132,11 @@ local function main()
         local ev, button, x, y = os.pullEventTimeout(1)
         if ev == "mouse_click" or ev == "monitor_touch" then
             if y == 11 then
-                if x >= 2 and x <= 8 then pcall(reactor.setBurnRate, math.max(0, (data.burn or 0) - 10))
-                elseif x >= 12 and x <= 18 then pcall(reactor.setBurnRate, (data.burn or 0) + 10) end
+                if x >= 2 and x <= 8 then pcall(reactor.setBurnRate, math.max(0, data.burn - 10))
+                elseif x >= 12 and x <= 18 then pcall(reactor.setBurnRate, data.burn + 10) end
             elseif y == 13 then
                 if x >= 2 and x <= 9 then isScrammed = true scramReason = "MANUAL"
-                elseif x >= 12 and x <= 20 and (data.dmg or 0) == 0 then 
+                elseif x >= 12 and x <= 20 and data.dmg == 0 then 
                     isScrammed = false 
                     pcall(reactor.activate) 
                 end
