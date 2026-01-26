@@ -1,4 +1,7 @@
 -- AEGIS-OS v21.0.0: OBSIDIAN PRIME (FINAL)
+-- AUTHOR: AEGIS AI ENGINEER
+-- TARGET: ATM10 / MEKANISM FISSION
+
 local VERSION = "21.0.0"
 
 -- 1. HARDWARE LINKING
@@ -12,13 +15,14 @@ local isScrammed = false
 local scramReason = "STABLE"
 
 -- 2. SAFE DATA RETRIEVAL
+-- Prevents "nil" errors if peripherals are disconnected/out of range
 local function getSafe(obj, func)
     if not obj then return nil end
     local ok, res = pcall(obj[func])
     return ok and res or nil
 end
 
--- 3. THE SINGULARITY BOOT (Your Sketch Design)
+-- 3. THE SINGULARITY BOOT (Custom Animation)
 local function playSingularity()
     device.setBackgroundColor(colors.black)
     device.clear()
@@ -33,7 +37,7 @@ local function playSingularity()
             local y = math.floor(cy + math.sin(math.rad(a)) * r)
             if x > 0 and x <= w then device.setCursorPos(x, y) device.write("o") end
         end
-        sleep(0.12)
+        sleep(0.1)
     end
     -- Blue detonation
     device.clear()
@@ -65,32 +69,34 @@ local function drawUI(data)
     device.setBackgroundColor(colors.black)
     device.setTextColor(colors.white)
     
-    -- LEFT: STATS
+    -- LEFT COLUMN: STATS
     device.setCursorPos(1, 3) device.write("TEMP: " .. math.floor(data.temp or 0) .. "K")
     device.setCursorPos(1, 4) device.write("DMG:  " .. (data.dmg or 0) .. "%")
     device.setCursorPos(1, 5) device.write("BURN: " .. (data.burn or 0))
+    
     device.setCursorPos(1, 7) device.setTextColor(colors.cyan)
     device.write("STM: " .. math.floor((data.steam/data.sMax)*100) .. "%")
+    
     device.setCursorPos(1, 8) device.setTextColor(colors.green)
     device.write("PWR: " .. math.floor((data.stored/data.maxE)*100) .. "%")
 
-    -- RIGHT: CONTROLS
+    -- RIGHT COLUMN: CONTROLS
     device.setTextColor(colors.white)
-    device.setCursorPos(16, 3) device.setBackgroundColor(colors.gray) device.write(" [-10] ")
-    device.setCursorPos(16, 5) device.setBackgroundColor(colors.gray) device.write(" [+10] ")
+    device.setCursorPos(18, 3) device.setBackgroundColor(colors.gray) device.write(" [-10] ")
+    device.setCursorPos(18, 5) device.setBackgroundColor(colors.gray) device.write(" [+10] ")
     
     -- BOTTOM COMMANDS
     device.setCursorPos(1, 11)
     device.setBackgroundColor(colors.red) device.setTextColor(colors.white)
-    device.write("    [ STOP ]    ")
+    device.write("     [ STOP ]     ")
     
     device.setCursorPos(1, 13)
     device.setBackgroundColor(isScrammed and colors.orange or colors.gray)
     device.setTextColor(colors.black)
-    device.write("    [ RESET ]   ")
+    device.write("     [ RESET ]    ")
 end
 
--- 5. THE IRON SENTRY (Protection Logic)
+-- 5. THE IRON SENTRY (Failsafe Logic)
 local function monitorCore()
     while true do
         local data = {
@@ -105,7 +111,7 @@ local function monitorCore()
             wMax = getSafe(reactor, "getWasteCapacity") or 1
         }
 
-        -- Iron-Strict Enforcement
+        -- Iron-Strict Enforcement Chain
         if data.dmg > 0 then isScrammed = true scramReason = "DMG!"
         elseif data.temp > 1150 then isScrammed = true scramReason = "HEAT!"
         elseif data.waste / data.wMax > 0.95 then isScrammed = true scramReason = "WASTE"
@@ -113,7 +119,10 @@ local function monitorCore()
         elseif data.stored / data.maxE > 0.99 then isScrammed = true scramReason = "POWER"
         end
 
-        if isScrammed then pcall(reactor.setBurnRate, 0) pcall(reactor.scram) end
+        if isScrammed then 
+            pcall(reactor.setBurnRate, 0) 
+            pcall(reactor.scram) 
+        end
 
         drawUI(data)
         sleep(0.5) 
@@ -123,14 +132,19 @@ end
 -- 6. THE TOUCH SENSOR
 local function touchListener()
     while true do
-        local ev, button, x, y = os.pullEvent("mouse_click") -- Standard event
+        local _, _, x, y = os.pullEvent("mouse_click")
         local burn = getSafe(reactor, "getBurnRate") or 0
         
-        if x >= 16 and x <= 23 then
+        -- Burn Rate Adjustments
+        if x >= 18 and x <= 24 then
             if y == 3 then pcall(reactor.setBurnRate, math.max(0, burn - 10))
             elseif y == 5 then pcall(reactor.setBurnRate, burn + 10) end
-        elseif x >= 1 and x <= 16 then
-            if y == 11 then isScrammed = true scramReason = "MANUAL"
+        
+        -- Bottom Buttons
+        elseif x >= 1 and x <= 18 then
+            if y == 11 then 
+                isScrammed = true 
+                scramReason = "MANUAL"
             elseif y == 13 and (getSafe(reactor, "getDamage") or 0) == 0 then 
                 isScrammed = false 
                 pcall(reactor.activate) 
@@ -141,4 +155,4 @@ end
 
 -- EXECUTION
 playSingularity()
-parallel.waitForAny(monitorCore, touchListener) -- High compatibility loop
+parallel.waitForAny(monitorCore, touchListener)
