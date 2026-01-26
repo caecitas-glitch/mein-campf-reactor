@@ -1,5 +1,5 @@
--- AEGIS REACTOR SHIELD v11.0
--- "Vault Protocol: Zero-Fail Edition"
+-- AEGIS REACTOR SHIELD v11.5 (FINAL STABILIZER)
+-- Protocol: Absolute Containment
 
 local REFRESH = 0.5
 local MAX_TEMP = 1000
@@ -8,18 +8,15 @@ local GITHUB_URL = "https://raw.githubusercontent.com/caecitas-glitch/mein-campf
 local reactor = peripheral.find("fissionReactorLogicAdapter")
 local matrix = peripheral.find("inductionPort")
 
--- === 1. THE DUAL-SAFETY WRAPPER ===
--- Forces EVERYTHING to a number to stop the table/nil crashes
-local function n(val)
+-- === 1. THE SAFETY SHIELD ===
+-- Prevents "Arithmetic on table" and "nil value" errors
+local function safe(val)
     if not val then return 0 end
     if type(val) == "table" then return tonumber(val.amount) or 0 end
     return tonumber(val) or 0
 end
 
 -- === 2. AUTO-UPDATER ===
--- Change this string on GitHub to test the update:
-local bootMessage = "<< AEGIS ONLINE >>" 
-
 local function autoUpdate()
     term.clear()
     term.setCursorPos(1,1)
@@ -31,9 +28,8 @@ local function autoUpdate()
         local f = fs.open(shell.getRunningProgram(), "r")
         local localCode = f and f.readAll() or ""
         if f then f.close() end
-        
         if remoteCode ~= localCode then
-            print("Update Detected. Syncing...")
+            print("Update Found. Syncing...")
             local wf = fs.open(shell.getRunningProgram(), "w")
             wf.write(remoteCode)
             wf.close()
@@ -42,7 +38,7 @@ local function autoUpdate()
     end
 end
 
--- === 3. CINEMATIC JAGGED VAULT STARTUP ===
+-- === 3. JAGGED VAULT STARTUP ===
 local function vaultStartup()
     autoUpdate()
     term.setBackgroundColor(colors.black)
@@ -60,55 +56,82 @@ local function vaultStartup()
             term.write("#")
         end
         term.setTextColor(colors.blue)
-        term.setCursorPos(midX - (#bootMessage/2), midY)
-        term.write(bootMessage)
+        local msg = "<< AEGIS ONLINE >>"
+        term.setCursorPos(midX - (#msg/2), midY)
+        term.write(msg)
         sleep(0.04)
     end
 end
 
--- === 4. MAIN LOOP ===
+-- === 4. PERSISTED SCRAMS ===
+local function getScrams()
+    if not fs.exists("scrams.txt") then return 0 end
+    local f = fs.open("scrams.txt", "r")
+    local c = tonumber(f.readAll()) or 0
+    f.close()
+    return c
+end
+
+local function addScram()
+    local c = getScrams() + 1
+    local f = fs.open("scrams.txt", "w")
+    f.write(tostring(c))
+    f.close()
+end
+
+-- === 5. MAIN LOOP ===
 vaultStartup()
 
 while true do
-    -- Force numeric conversion on EVERY API call
+    -- Using the Safety Shield for every single call
     local status = reactor.getStatus()
-    local tempC  = math.floor(n(reactor.getTemperature()) - 273.15)
-    local dmg    = n(reactor.getDamagePercent())
-    local burn   = n(reactor.getBurnRate())
+    local tempC  = math.floor(safe(reactor.getTemperature()) - 273.15)
+    local dmg    = safe(reactor.getDamagePercent())
+    local burn   = safe(reactor.getBurnRate())
     
-    local fuelPct    = (n(reactor.getFuelCapacity()) > 0) and (n(reactor.getFuel()) / n(reactor.getFuelCapacity())) or 0
-    local wastePct   = (n(reactor.getWasteCapacity()) > 0) and (n(reactor.getWaste()) / n(reactor.getWasteCapacity())) or 0
-    local coolantPct = (n(reactor.getCoolantCapacity()) > 0) and (n(reactor.getCoolant()) / n(reactor.getCoolantCapacity())) or 0
-    local steamPct   = (n(reactor.getSteamCapacity()) > 0) and (n(reactor.getSteam() or reactor.getFluidStored())) / n(reactor.getSteamCapacity()) or 0
+    local fMax = safe(reactor.getFuelCapacity())
+    local wMax = safe(reactor.getWasteCapacity())
+    local cMax = safe(reactor.getCoolantCapacity())
+    local sMax = safe(reactor.getSteamCapacity())
 
-    local energyPct = (n(matrix.getMaxEnergy()) > 0) and (n(matrix.getEnergy()) / n(matrix.getMaxEnergy())) or 0
+    local fuelP    = (fMax > 0) and (safe(reactor.getFuel()) / fMax) or 0
+    local wasteP   = (wMax > 0) and (safe(reactor.getWaste()) / wMax) or 0
+    local coolantP = (cMax > 0) and (safe(reactor.getCoolant()) / cMax) or 0
+    local steamP   = (sMax > 0) and (safe(reactor.getSteam() or reactor.getFluidStored()) / sMax) or 0
+
+    local eMax = safe(matrix.getMaxEnergy())
+    local energyPct = (eMax > 0) and (safe(matrix.getEnergy()) / eMax) or 0
 
     -- Failsafes
-    if status and (tempC > MAX_TEMP or dmg > 0 or energyPct > 0.98 or wastePct > 0.9) then
+    if status and (tempC > MAX_TEMP or dmg > 0 or energyPct > 0.98 or wasteP > 0.9) then
         reactor.scram()
+        addScram()
         error("SCRAM: SAFETY LIMITS EXCEEDED")
     end
 
-    -- UI Rendering
+    -- UI Rendering (v6.7 Layout Revived)
     term.clear()
     term.setCursorPos(1,1)
     term.setTextColor(colors.blue)
-    print("== [ AEGIS VAULT v11.0 ] ==")
+    print("== [ AEGIS VAULT v11.5 ] ==")
+    
+    term.setCursorPos(22, 1)
+    term.setTextColor(colors.red)
+    term.write("SCRAMS: " .. getScrams())
 
     term.setCursorPos(1, 3)
     term.setTextColor(colors.white)
-    print("STATUS:  " .. (status and "ACTIVE" or "IDLE"))
-    print("HEAT:    " .. tempC .. " C")
-    print("BURN:    " .. burn .. " mB/t")
-    print("DAMAGE:  " .. dmg .. " %")
+    print("STATUS: " .. (status and "ACTIVE" or "IDLE"))
+    print("HEAT:   " .. tempC .. " C")
+    print("BURN:   " .. burn .. " mB/t")
+    print("DAMAGE: " .. dmg .. " %")
 
     term.setTextColor(colors.gray)
-    print("\n--- CORE DIAGNOSTICS ---")
+    print("\n--- THERMAL & WASTE ---")
     term.setTextColor(colors.white)
-    print("FUEL:    " .. math.floor(fuelPct * 100) .. "%")
-    print("WASTE:   " .. math.floor(wastePct * 100) .. "%")
-    print("COOLANT: " .. math.floor(coolantPct * 100) .. "%")
-    print("STEAM:   " .. math.floor(steamPct * 100) .. "%")
+    print("COOLANT: " .. math.floor(coolantP * 100) .. "%")
+    print("WASTE:   " .. math.floor(wasteP * 100) .. "%")
+    print("STEAM:   " .. math.floor(steamP * 100) .. "%")
 
     term.setTextColor(colors.gray)
     print("\n--- GRID STATUS ---")
