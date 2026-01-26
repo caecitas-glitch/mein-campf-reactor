@@ -1,135 +1,90 @@
--- AEGIS-OS v15.0.0: IRON SENTRY (TOUCH FIXED)
-local VERSION = "15.0.0"
+-- AEGIS: SIMPLE TABLET TEST
+local VERSION = "16.0.0"
 
--- 1. PERIPHERALS
-local monitor = peripheral.find("monitor")
+-- 1. SETUP (Using term.current to prevent the redirect error)
+local device = term.current() --
+local w, h = device.getSize()
 local reactor = peripheral.find("fission_reactor_logic_adapter")
-local turbine = peripheral.find("turbine_valve")
-local matrix  = peripheral.find("induction_port")
 
--- 2. REDIRECT FIX (Prevents the "term is not recommended" crash)
-local deviceTerm = monitor or term.current() -- Use term.current for the pocket computer
-local w, h = deviceTerm.getSize()
-
--- Safety State
-local isScrammed = false
-local scramReason = "STABLE"
-
--- 3. SINGULARITY BOOT (Your Sketch Design)
+-- 2. THE SINGULARITY BOOT (Your Sketch)
 local function playSingularity()
-    deviceTerm.setBackgroundColor(colors.black)
-    deviceTerm.clear()
+    device.setBackgroundColor(colors.black)
+    device.clear()
     local cx, cy = math.floor(w / 2), math.floor(h / 2)
     
-    -- White ring collapse
+    -- Wave Condensation
     for r = 8, 1, -2 do
-        deviceTerm.clear()
-        deviceTerm.setTextColor(colors.white)
+        device.clear()
+        device.setTextColor(colors.white)
         for a = 0, 360, 20 do
             local x = math.floor(cx + math.cos(math.rad(a)) * (r * 2))
             local y = math.floor(cy + math.sin(math.rad(a)) * r)
-            if x > 0 and x <= w then deviceTerm.setCursorPos(x, y) deviceTerm.write("o") end
+            if x > 0 and x <= w then device.setCursorPos(x, y) device.write("o") end
         end
-        sleep(0.12)
+        sleep(0.1)
     end
     
     -- Blue Core Detonation
-    deviceTerm.clear()
-    deviceTerm.setTextColor(colors.blue)
-    deviceTerm.setCursorPos(cx, cy) deviceTerm.write("@")
-    sleep(0.1)
+    device.clear()
+    device.setTextColor(colors.blue)
+    device.setCursorPos(cx, cy) device.write("@")
+    sleep(0.15)
     for r = 1, 10 do
         for a = 0, 360, 30 do
             local x = math.floor(cx + math.cos(math.rad(a)) * r)
             local y = math.floor(cy + math.sin(math.rad(a)) * (r/2))
-            if x > 0 and x <= w then deviceTerm.setCursorPos(x, y) deviceTerm.write("*") end
+            if x > 0 and x <= w then device.setCursorPos(x, y) device.write("*") end
         end
         sleep(0.04)
     end
-    deviceTerm.clear() -- Clear the animation before UI load
+    device.clear() -- Wipe animation for a clean UI
 end
 
--- 4. THE STRICT FAILSAFE LOGIC
-local function getSafe(obj, func)
-    if not obj then return nil end
-    local ok, res = pcall(obj[func])
-    return ok and res or nil
-end
-
--- 5. THE MAIN INTERFACE
+-- 3. THE UI & INPUT
 local function main()
+    local burnRate = 0
     while true do
-        -- Data Retrieval
-        local rData = {
-            temp = getSafe(reactor, "getTemperature") or 0,
-            dmg = getSafe(reactor, "getDamage") or 0,
-            burn = getSafe(reactor, "getBurnRate") or 0,
-            waste = getSafe(reactor, "getWaste") and reactor.getWaste().amount or 0,
-            wasteMax = getSafe(reactor, "getWasteCapacity") or 1
-        }
-        local tData = {
-            steam = getSafe(turbine, "getSteam") and turbine.getSteam().amount or 0,
-            steamMax = getSafe(turbine, "getSteamCapacity") or 1
-        }
-        local mData = {
-            stored = getSafe(matrix, "getEnergy") or 0,
-            maxE = getSafe(matrix, "getMaxEnergy") or 1
-        }
+        device.setBackgroundColor(colors.black)
+        device.clear()
+        
+        -- Header
+        device.setCursorPos(1, 1)
+        device.setBackgroundColor(colors.blue)
+        device.clearLine()
+        device.write(" AEGIS TEST | BURN: " .. burnRate)
+        device.setBackgroundColor(colors.black)
+        
+        -- The Buttons
+        device.setCursorPos(2, 5)
+        device.setBackgroundColor(colors.gray) device.write(" [ -10 ] ")
+        device.setCursorPos(15, 5)
+        device.setBackgroundColor(colors.gray) device.write(" [ +10 ] ")
+        
+        device.setCursorPos(2, 8)
+        device.setBackgroundColor(colors.red) device.setTextColor(colors.white)
+        device.write(" [ STOP ] ")
+        device.setBackgroundColor(colors.black)
 
-        -- Iron-Strict Check
-        if rData.dmg > 0 then isScrammed = true scramReason = "DAMAGE"
-        elseif rData.temp > 1150 then isScrammed = true scramReason = "OVERHEAT"
-        elseif (rData.waste / rData.wasteMax) > 0.95 then isScrammed = true scramReason = "WASTE FULL"
-        elseif (tData.steam / tData.steamMax) > 0.98 then isScrammed = true scramReason = "STEAM BACKUP"
-        elseif (mData.stored / mData.maxE) > 0.99 then isScrammed = true scramReason = "GRID FULL"
-        end
-
-        if isScrammed then 
-            pcall(reactor.setBurnRate, 0)
-            pcall(reactor.scram) 
-        end
-
-        -- Render UI
-        deviceTerm.setBackgroundColor(colors.black)
-        deviceTerm.clear()
-        deviceTerm.setCursorPos(1, 1)
-        deviceTerm.setBackgroundColor(isScrammed and colors.red or colors.blue)
-        deviceTerm.clearLine()
-        deviceTerm.write(" AEGIS-OS | " .. (isScrammed and "SCRAM: " .. scramReason or "CORE STABLE"))
-        deviceTerm.setBackgroundColor(colors.black)
-
-        -- Statistics Display
-        deviceTerm.setTextColor(colors.white)
-        deviceTerm.setCursorPos(2, 3) deviceTerm.write("Temp: " .. math.floor(rData.temp) .. "K")
-        deviceTerm.setCursorPos(2, 4) deviceTerm.write("Dmg:  " .. rData.dmg .. "%")
-        deviceTerm.setCursorPos(2, 5) deviceTerm.write("Burn: " .. rData.burn .. " mB/t")
-        deviceTerm.setCursorPos(2, 6) deviceTerm.write("Pwr:  " .. math.floor((mData.stored/mData.maxE)*100) .. "%")
-
-        -- Touch Buttons
-        deviceTerm.setCursorPos(2, 8)
-        deviceTerm.setBackgroundColor(colors.gray) deviceTerm.write(" [-10] ")
-        deviceTerm.setCursorPos(12, 8)
-        deviceTerm.setBackgroundColor(colors.gray) deviceTerm.write(" [+10] ")
-        deviceTerm.setCursorPos(2, 10)
-        deviceTerm.setBackgroundColor(colors.red) deviceTerm.write(" [STOP] ")
-        deviceTerm.setCursorPos(12, 10)
-        deviceTerm.setBackgroundColor(colors.orange) deviceTerm.write(" [RESET] ")
-        deviceTerm.setBackgroundColor(colors.black)
-
-        -- Input Event
-        local ev, side, x, y = os.pullEventTimeout(1)
-        if ev == "monitor_touch" or ev == "mouse_click" then
-            if y == 8 then
-                if x >= 2 and x <= 8 then pcall(reactor.setBurnRate, math.max(0, rData.burn - 10))
-                elseif x >= 12 and x <= 18 then pcall(reactor.setBurnRate, rData.burn + 10) end
-            elseif y == 10 then
-                if x >= 2 and x <= 8 then isScrammed = true scramReason = "MANUAL"
-                elseif x >= 12 and x <= 19 and rData.dmg == 0 then isScrammed = false pcall(reactor.activate) end
+        -- Input Listener
+        local event, button, x, y = os.pullEvent("mouse_click")
+        
+        if y == 5 then
+            if x >= 2 and x <= 9 then
+                burnRate = math.max(0, burnRate - 10)
+            elseif x >= 15 and x <= 22 then
+                burnRate = burnRate + 10
             end
+        elseif y == 8 and x >= 2 and x <= 10 then
+            burnRate = 0
+        end
+
+        -- Sync with actual reactor if it exists
+        if reactor then
+            pcall(function() reactor.setBurnRate(burnRate) end) --
         end
     end
 end
 
--- Run
+-- Start
 playSingularity()
 main()
