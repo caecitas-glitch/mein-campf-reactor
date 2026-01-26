@@ -1,51 +1,62 @@
 -- Configuration
 local GITHUB_URL = "https://raw.githubusercontent.com/caecitas-glitch/mein-campf-reactor/refs/heads/main/startup.lua"
-local UPDATE_INTERVAL = 3600 -- Check for updates every hour (if script stays running)
-local VERSION = "1.0.2"
+local VERSION = "1.1.0"
 
--- Peripheral Wrapping
-local reactor = peripheral.find("fission_reactor_logic_adapter")
-local turbine = peripheral.find("turbine_valve")
-local matrix = peripheral.find("induction_port")
-local monitor = peripheral.find("monitor") -- Optional: will use terminal if no monitor
+-- Peripheral wrapping with safety checks
+local function getPeripheral(type)
+    local p = peripheral.find(type)
+    if not p then print("Warning: " .. type .. " not found!") end
+    return p
+end
+
+local reactor = getPeripheral("fission_reactor_logic_adapter")
+local turbine = getPeripheral("turbine_valve")
+local matrix  = getPeripheral("induction_port")
+local monitor = getPeripheral("monitor")
 
 local termObj = monitor or term
-if monitor then monitor.setTextScale(0.5) end
+if monitor then termObj.setTextScale(0.5) end
 
--- --- AUTO-UPDATER LOGIC ---
-local function updateScript()
-    print("Checking for updates...")
+-- --- AUTO-UPDATER ---
+local function checkForUpdates()
+    termObj.clear()
+    termObj.setCursorPos(1,1)
+    print("Checking GitHub for updates...")
+    
     if not http then
-        print("Error: HTTP API not enabled.")
+        print("Error: HTTP API is disabled in the server config.")
+        sleep(2)
         return
     end
 
     local response = http.get(GITHUB_URL)
     if response then
-        local newCode = response.readAll()
+        local remoteContent = response.readAll()
         response.close()
 
-        -- Simple check: if the file size or content is different
-        local f = fs.open("startup.lua", "r")
-        local oldCode = f.readAll()
-        f.close()
+        local currentFile = fs.open(shell.getRunningProgram(), "r")
+        local localContent = currentFile.readAll()
+        currentFile.close()
 
-        if newCode ~= oldCode and #newCode > 100 then
-            print("New version found! Updating...")
-            local wf = fs.open("startup.lua", "w")
-            wf.write(newCode)
-            wf.close()
+        if remoteContent ~= localContent and #remoteContent > 100 then
+            print("New version detected! Updating...")
+            local file = fs.open(shell.getRunningProgram(), "w")
+            file.write(remoteContent)
+            file.close()
+            print("Update complete. Rebooting...")
             sleep(1)
             os.reboot()
         else
-            print("Already up to date.")
+            print("System up to date.")
+            sleep(1)
         end
     else
-        print("Failed to reach GitHub.")
+        print("Could not connect to GitHub. Starting local version...")
+        sleep(2)
     end
 end
 
--- --- UTILS ---
+-- --- UI UTILS ---
 local function formatNum(n)
     if n >= 1e12 then return string.format("%.2f T", n/1e12) end
     if n >= 1e9 then return string.format("%.2f G", n/1e9) end
@@ -54,109 +65,91 @@ local function formatNum(n)
     return tostring(math.floor(n))
 end
 
-local function drawHeader(title, y, color)
-    termObj.setCursorPos(1, y)
-    termObj.setBackgroundColor(color)
-    termObj.setTextColor(colors.white)
-    termObj.clearLine()
-    termObj.write(" " .. title)
-    termObj.setBackgroundColor(colors.black)
-end
-
-local function drawStat(label, value, y, unit, color)
+local function drawProgressBar(y, current, max, color)
+    local width, _ = termObj.getSize()
+    local barWidth = width - 4
+    local fill = math.floor((current / max) * barWidth)
+    
     termObj.setCursorPos(2, y)
-    termObj.setTextColor(colors.lightGray)
-    termObj.write(label .. ": ")
-    termObj.setTextColor(color or colors.white)
-    termObj.write(value .. " " .. (unit or ""))
+    termObj.write("[")
+    termObj.setBackgroundColor(color)
+    termObj.write(string.rep(" ", fill))
+    termObj.setBackgroundColor(colors.black)
+    termObj.write(string.rep("-", barWidth - fill))
+    termObj.write("]")
 end
 
--- --- MAIN LOOP ---
-local function main()
+-- --- MONITORING LOOP ---
+local function run()
     while true do
         termObj.setBackgroundColor(colors.black)
         termObj.clear()
         
-        -- 1. Safety Logic
-        local status = "OPERATIONAL"
+        -- 1. Reactor Safety Logic
+        local status = "STABLE"
         local statusColor = colors.green
-        local scramReason = ""
-
         if reactor then
-            local damage = reactor.getDamage()
+            local dmg = reactor.getDamage()
             local temp = reactor.getTemperature()
-            local waste = reactor.getWaste().amount
-            local wasteMax = reactor.getWasteCapacity()
-
-            if damage > 0 or temp > 1150 or (waste / wasteMax) > 0.90 then
+            local waste = reactor.getWaste().amount / reactor.getWasteCapacity()
+            
+            if dmg > 0 or temp > 1100 or waste > 0.85 then
                 reactor.setBurnRate(0)
-                -- reactor.scram() -- Uncomment if your version supports direct SCRAM
-                status = "EMERGENCY SHUTDOWN"
+                status = "SCRAM - EMERGENCY"
                 statusColor = colors.red
-                if damage > 0 then scramReason = "CORE DAMAGE"
-                elseif temp > 1150 then scramReason = "OVERHEAT"
-                else scramReason = "WASTE OVERFLOW" end
             end
         end
 
-        -- 2. Display Header
-        drawHeader("SYSTEM CONTROL v" .. VERSION .. " | " .. status, 1, statusColor)
-        if scramReason ~= "" then
-            termObj.setCursorPos(2, 2)
-            termObj.setTextColor(colors.red)
-            termObj.write("!! " .. scramReason .. " !!")
-        end
+        -- Header
+        termObj.setCursorPos(1,1)
+        termObj.setBackgroundColor(statusColor)
+        termObj.clearLine()
+        termObj.write(" SYSTEM MONITOR v" .. VERSION .. " | " .. status)
+        termObj.setBackgroundColor(colors.black)
 
-        -- 3. Reactor Stats
-        drawHeader("FISSION REACTOR", 4, colors.gray)
+        -- Reactor Section
         if reactor then
-            drawStat("Status", reactor.getStatus() and "ONLINE" or "OFFLINE", 5, "", reactor.getStatus() and colors.green or colors.red)
-            drawStat("Temp", math.floor(reactor.getTemperature()), 6, "K", reactor.getTemperature() > 1000 and colors.orange or colors.yellow)
-            drawStat("Damage", reactor.getDamage(), 7, "%", reactor.getDamage() > 0 and colors.red or colors.green)
-            drawStat("Fuel", formatNum(reactor.getFuel().amount), 8, "mB")
-            drawStat("Burn Rate", reactor.getBurnRate(), 9, "mB/t")
-        else
+            termObj.setTextColor(colors.yellow)
+            termObj.setCursorPos(1, 3)
+            termObj.write(">> FISSION REACTOR")
+            termObj.setTextColor(colors.white)
+            termObj.setCursorPos(2, 4)
+            termObj.write("Temp: " .. math.floor(reactor.getTemperature()) .. "K")
             termObj.setCursorPos(2, 5)
-            termObj.write("NOT FOUND")
+            termObj.write("Damage: " .. reactor.getDamage() .. "%")
+            termObj.setCursorPos(2, 6)
+            termObj.write("Burn: " .. reactor.getBurnRate() .. " mB/t")
         end
 
-        -- 4. Turbine Stats
-        drawHeader("INDUSTRIAL TURBINE", 11, colors.gray)
-        if turbine then
-            drawStat("Energy", formatNum(turbine.getEnergy()), 12, "FE")
-            drawStat("Flow Rate", formatNum(turbine.getFlowRate()), 13, "mB/t")
-            drawStat("Production", formatNum(turbine.getProductionRate()), 14, "FE/t", colors.cyan)
-            local fill = (turbine.getEnergy() / turbine.getMaxEnergy()) * 100
-            drawStat("Storage", string.format("%.1f", fill), 15, "%")
-        else
-            termObj.setCursorPos(2, 12)
-            termObj.write("NOT FOUND")
-        end
-
-        -- 5. Matrix Stats
-        drawHeader("INDUCTION MATRIX", 17, colors.gray)
+        -- Matrix Section
         if matrix then
-            drawStat("Stored", formatNum(matrix.getEnergy()), 18, "FE")
-            drawStat("Input", formatNum(matrix.getLastInput()), 19, "FE/t", colors.green)
-            drawStat("Output", formatNum(matrix.getLastOutput()), 20, "FE/t", colors.red)
-            local mFill = (matrix.getEnergy() / matrix.getMaxEnergy()) * 100
-            drawStat("Charge", string.format("%.1f", mFill), 21, "%", colors.magenta)
-        else
-            termObj.setCursorPos(2, 18)
-            termObj.write("NOT FOUND")
+            termObj.setTextColor(colors.magenta)
+            termObj.setCursorPos(1, 8)
+            termObj.write(">> INDUCTION MATRIX")
+            termObj.setTextColor(colors.white)
+            local energy = matrix.getEnergy()
+            local maxEnergy = matrix.getMaxEnergy()
+            termObj.setCursorPos(2, 9)
+            termObj.write("Storage: " .. formatNum(energy) .. "FE")
+            drawProgressBar(10, energy, maxEnergy, colors.magenta)
+        end
+
+        -- Turbine Section
+        if turbine then
+            termObj.setTextColor(colors.cyan)
+            termObj.setCursorPos(1, 12)
+            termObj.write(">> INDUSTRIAL TURBINE")
+            termObj.setTextColor(colors.white)
+            termObj.setCursorPos(2, 13)
+            termObj.write("Gen: " .. formatNum(turbine.getProductionRate()) .. " FE/t")
+            termObj.setCursorPos(2, 14)
+            termObj.write("Flow: " .. formatNum(turbine.getFlowRate()) .. " mB/t")
         end
 
         sleep(1)
     end
 end
 
--- Run update check once on start
-updateScript()
-
--- Run Main loop with error handling
-local status, err = pcall(main)
-if not status then
-    term.setBackgroundColor(colors.black)
-    term.setTextColor(colors.red)
-    print("Program crashed: " .. err)
-end
+-- Start Execution
+checkForUpdates()
+run()
