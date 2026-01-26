@@ -1,5 +1,5 @@
--- AEGIS-OS: Core Containment & Fusion Management
-local VERSION = "3.0.0"
+-- AEGIS: Core Containment Protocol (CCP) - Cinema Edition
+local VERSION = "5.0.0"
 local GITHUB_URL = "https://raw.githubusercontent.com/caecitas-glitch/mein-campf-reactor/refs/heads/main/startup.lua"
 
 -- Peripherals
@@ -8,141 +8,159 @@ local reactor = peripheral.wrap("fissionReactorLogicAdapter_1")
 local turbine = peripheral.wrap("turbineValve_0")
 local matrix  = peripheral.wrap("inductionPort_0")
 
--- Trend Tracking
-local history = { matrixE = 0, reactorF = 0, reactorW = 0, time = os.epoch("utc") }
-local trends = { energy = 0, fuel = 0, waste = 0 }
-
--- UI Layout Constants
 local w, h = 0, 0
 if monitor then w, h = monitor.getSize() end
-local sidebarWidth = 12
-local mainWidth = w - sidebarWidth
+local sidebarW = 12
+
+-- History for Per-Minute Trends
+local hist = { mE = 0, rF = 0, time = os.epoch("utc") }
+local trends = { energy = 0, fuel = 0 }
 
 -- --- UTILS ---
-local function safeCall(obj, func, ...)
-    if obj and obj[func] then return obj[func](...) end
-    return nil
-end
+local function safeCall(obj, f, ...) if obj and obj[f] then return obj[f](...) end end
 
 local function formatNum(n)
     if not n or type(n) ~= "number" then return "0" end
     local absN = math.abs(n)
-    local suffix = n < 0 and "-" or ""
-    if absN >= 1e12 then return string.format("%s%.1fT", suffix, absN/1e12) end
-    if absN >= 1e9 then return string.format("%s%.1fG", suffix, absN/1e9) end
-    if absN >= 1e6 then return string.format("%s%.1fM", suffix, absN/1e6) end
-    if absN >= 1e3 then return string.format("%s%.1fk", suffix, absN/1e3) end
-    return suffix .. tostring(math.floor(absN))
+    if absN >= 1e12 then return string.format("%.1fT", absN/1e12) end
+    if absN >= 1e9 then return string.format("%.1fG", absN/1e9) end
+    if absN >= 1e6 then return string.format("%.1fM", absN/1e6) end
+    return tostring(math.floor(absN))
 end
 
--- --- ANIMATION: PARTICLE ACCELERATOR ---
-local function bootSequence()
-    term.redirect(monitor or term)
-    monitor.setTextScale(0.5)
-    term.setBackgroundColor(colors.black)
-    term.clear()
-    
-    local centerX, centerY = math.floor(w/2), math.floor(h/2)
-    local chars = {"-", "\\", "|", "/"}
-    
-    -- Animation: Spinning ring to form Logo
-    for radius = 1, 5 do
-        for angle = 0, 360, 15 do
-            local rad = math.rad(angle)
-            local x = math.floor(centerX + math.cos(rad) * radius)
-            local y = math.floor(centerY + math.sin(rad) * (radius/2))
-            term.setCursorPos(x, y)
-            term.setTextColor(colors.cyan)
-            term.write(chars[(angle/15 % 4) + 1])
-            sleep(0.01)
+-- --- THE 5 ANIMATIONS ---
+
+local anims = {
+    -- 1. Particle Accelerator
+    function()
+        local cx, cy = math.floor(w/2) - 6, math.floor(h/2)
+        for r = 1, 6 do
+            for a = 0, 360, 25 do
+                local x, y = math.floor(cx + math.cos(math.rad(a))*r*1.5), math.floor(cy + math.sin(math.rad(a))*r*0.8)
+                term.setCursorPos(x, y)
+                term.setTextColor(colors.cyan)
+                term.write("o")
+                if r > 4 then sleep(0.01) end
+            end
+        end
+    end,
+    -- 2. Core Scan
+    function()
+        for i = 1, h do
+            term.setCursorPos(1, i)
+            term.setBackgroundColor(colors.green)
+            term.clearLine()
+            sleep(0.05)
+            term.setBackgroundColor(colors.black)
+            term.clearLine()
+        end
+    end,
+    -- 3. Neural Net (Matrix)
+    function()
+        for i = 1, 40 do
+            term.setCursorPos(math.random(1, w-sidebarW), math.random(1, h))
+            term.setTextColor(colors.lime)
+            term.write(string.char(math.random(33, 96)))
+            if i % 4 == 0 then sleep(0.05) end
+        end
+    end,
+    -- 4. Horizon Pulse
+    function()
+        local cy = math.floor(h/2)
+        for i = 1, math.floor(w/2) do
+            term.setCursorPos(w/2 - i, cy) term.write("<")
+            term.setCursorPos(w/2 + i, cy) term.write(">")
+            sleep(0.03)
+        end
+    end,
+    -- 5. Singularity
+    function()
+        for r = 8, 1, -1 do
+            term.clear()
+            local cx, cy = math.floor(w/2), math.floor(h/2)
+            term.setCursorPos(cx-r, cy) term.write("[")
+            term.setCursorPos(cx+r, cy) term.write("]")
+            sleep(0.1)
         end
     end
-    
-    sleep(0.5)
+}
+
+local function playBoot(idx)
+    term.redirect(monitor or term)
+    term.setBackgroundColor(colors.black)
     term.clear()
+    local i = idx or math.random(1, #anims)
+    anims[i]()
+    term.setTextColor(colors.white)
+    term.setCursorPos(2, h-2)
+    textutils.slowWrite("AEGIS-OS: V" .. VERSION .. " INITIALIZED", 30)
+    sleep(1)
 end
 
--- --- UI COMPONENTS ---
+-- --- SIDEBAR & UI ---
 local function drawSidebar()
-    -- Draw AEGIS Logo and Name
     term.setBackgroundColor(colors.gray)
-    for i = 1, h do
-        term.setCursorPos(mainWidth + 1, i)
-        term.write(" ")
-    end
+    for i = 1, h do term.setCursorPos(w-sidebarW+1, i) term.write(" ") end
     term.setBackgroundColor(colors.black)
     term.setTextColor(colors.cyan)
-    term.setCursorPos(mainWidth + 3, 2) term.write("AEGIS")
-    term.setCursorPos(mainWidth + 3, 3) term.write(" v3.0")
-    
-    -- Logo symbol
-    term.setCursorPos(mainWidth + 4, 5) term.write("/--\\")
-    term.setCursorPos(mainWidth + 4, 6) term.write("|<>|")
-    term.setCursorPos(mainWidth + 4, 7) term.write("\\--/")
-    
-    term.setTextColor(colors.red)
-    term.setCursorPos(mainWidth + 2, h - 1) term.write("PROT: ON")
-end
-
-local function drawHeader(title, y, bg)
-    term.setCursorPos(1, y)
-    term.setBackgroundColor(bg or colors.blue)
-    term.setTextColor(colors.white)
-    term.write(" " .. string.sub(title .. string.rep(" ", mainWidth), 1, mainWidth - 1))
-    term.setBackgroundColor(colors.black)
+    term.setCursorPos(w-9, 2) term.write("AEGIS")
+    term.setTextColor(colors.blue)
+    term.setCursorPos(w-10, 4) term.write("  /--\\  ")
+    term.setCursorPos(w-10, 5) term.write(" / || \\ ")
+    term.setCursorPos(w-10, 6) term.write(" | -- | ")
+    term.setCursorPos(w-10, 7) term.write(" \\ -- / ")
+    term.setCursorPos(w-10, 8) term.write("  \\--/  ")
 end
 
 -- --- MAIN LOOP ---
 local function run()
     while true do
         local now = os.epoch("utc")
-        local dt = (now - history.time) / 1000
+        local dt = (now - hist.time) / 60000 -- Convert ms to minutes
         
-        -- Data Refresh
         local mE = safeCall(matrix, "getEnergy") or 0
         local rF = (safeCall(reactor, "getFuel") or {amount=0}).amount
-        local rW = (safeCall(reactor, "getWaste") or {amount=0}).amount
-        if dt > 0 then
-            trends.energy = (mE - history.matrixE) / dt
-            trends.fuel = (rF - history.reactorF) / dt
-            trends.waste = (rW - history.reactorW) / dt
+        
+        if dt > 0.01 then -- Update trends roughly every second, but calc per minute
+            trends.energy = (mE - hist.mE) / dt
+            trends.fuel = (rF - hist.rF) / dt
+            hist.mE, hist.rF, hist.time = mE, rF, now
         end
-        history.matrixE, history.reactorF, history.reactorW, history.time = mE, rF, rW, now
 
-        -- Rendering
         drawSidebar()
         
-        -- Reactor Section
-        drawHeader("CORE CONTAINMENT", 1, colors.red)
-        local rTemp = safeCall(reactor, "getTemperature") or 0
-        local rDmg = safeCall(reactor, "getDamage") or 0
-        term.setCursorPos(2, 2) term.clearLine() term.write("HEAT: " .. math.floor(rTemp) .. "K | DMG: " .. rDmg .. "%")
-        term.setCursorPos(2, 3) term.clearLine() term.write("FUEL: " .. formatNum(rF))
+        -- Reactor
+        term.setCursorPos(1, 1) term.setBackgroundColor(colors.red) term.write(" CORE PROTOCOL ")
+        term.setBackgroundColor(colors.black)
+        term.setCursorPos(2, 2) term.clearLine()
+        term.write("TEMP: " .. math.floor(safeCall(reactor, "getTemperature") or 0) .. "K")
+        term.setCursorPos(2, 3) term.clearLine()
+        term.write("FUEL: " .. formatNum(rF) .. " (")
         term.setTextColor(trends.fuel < 0 and colors.red or colors.green)
-        term.write(" (" .. formatNum(trends.fuel) .. "/s)")
-        term.setTextColor(colors.white)
+        term.write(formatNum(trends.fuel) .. "/min")
+        term.setTextColor(colors.white) term.write(")")
 
-        -- Turbine Section
-        drawHeader("TURBINE STATUS", 5, colors.blue)
-        local tGen = safeCall(turbine, "getProductionRate") or 0
-        term.setCursorPos(2, 6) term.clearLine() term.write("GEN RATE: " .. formatNum(tGen) .. " FE/t")
-
-        -- Matrix Section
-        drawHeader("STORAGE GRID", 8, colors.purple)
-        local mMax = safeCall(matrix, "getMaxEnergy") or 1
-        term.setCursorPos(2, 9) term.clearLine() term.write("CAP: " .. string.format("%.1f%%", (mE/mMax)*100))
-        term.setCursorPos(2, 10) term.clearLine() 
-        term.write("NET: ")
+        -- Storage
+        term.setCursorPos(1, 6) term.setBackgroundColor(colors.blue) term.write(" ENERGY GRID ")
+        term.setBackgroundColor(colors.black)
+        term.setCursorPos(2, 7) term.clearLine()
+        term.write("STORED: " .. formatNum(mE) .. " FE")
+        term.setCursorPos(2, 8) term.clearLine()
         term.setTextColor(trends.energy >= 0 and colors.green or colors.red)
-        term.write(formatNum(trends.energy) .. " FE/s")
+        term.write("NET: " .. formatNum(trends.energy) .. " FE/min")
         term.setTextColor(colors.white)
 
-        -- Safety Logic
-        if rDmg > 0 or rTemp > 1180 then safeCall(reactor, "setBurnRate", 0) end
-        
+        if (safeCall(reactor, "getDamage") or 0) > 0 then safeCall(reactor, "setBurnRate", 0) end
         sleep(1)
     end
 end
 
-bootSequence()
+-- --- ARGUMENT HANDLING ---
+local args = {...}
+if args[1] == "anim" and args[2] then
+    playBoot(tonumber(args[2]))
+    return
+end
+
+playBoot()
 run()
