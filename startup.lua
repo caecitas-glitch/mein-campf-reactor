@@ -1,6 +1,37 @@
 -- AEGIS REACTOR SHIELD v6.0
 -- "Vault Protocol: Absolute Containment"
+-- AEGIS AUTO-UPDATER KERNEL
+local GITHUB_URL = "https://raw.githubusercontent.com/caecitas-glitch/mein-campf-reactor/main/startup.lua"
 
+local function autoUpdate()
+    print("Checking Vault for updates...")
+    local response = http.get(GITHUB_URL)
+    if response then
+        local remoteCode = response.readAll()
+        response.close()
+        
+        -- Read local file to compare
+        local localFile = fs.open(shell.getRunningProgram(), "r")
+        local localCode = localFile.readAll()
+        localFile.close()
+        
+        if remoteCode ~= localCode then
+            print("New Vault Protocol detected. Updating...")
+            local f = fs.open(shell.getRunningProgram(), "w")
+            f.write(remoteCode)
+            f.close()
+            sleep(1)
+            os.reboot()
+        else
+            print("Vault is up to date.")
+        end
+    else
+        print("Update server unreachable. Skipping...")
+    end
+end
+
+autoUpdate()
+-- Your main vault code starts here...
 local REFRESH = 0.5
 local MAX_TEMP = 1000
 local CHANNEL = 15
@@ -104,4 +135,5 @@ while true do
 
     modem.transmit(CHANNEL, CHANNEL, {t=os.date("%H:%M:%S"), temp=tempC, dmg=dmg, batt=energyPct, p=steam})
     sleep(REFRESH)
+
 end
