@@ -83,21 +83,28 @@ end
 vaultStartup()
 
 while true do
-    -- Using the Safety Shield for every single call
+    -- 1. Gather Resource Tables
+    local fuelTbl    = reactor.getFuel() or {amount = 0, max = 0}
+    local wasteTbl   = reactor.getWaste() or {amount = 0, max = 0}
+    local coolantTbl = reactor.getCoolant() or {amount = 0, max = 0}
+    local steamTbl   = reactor.getSteam() or {amount = 0, max = 0}
+
+    -- 2. Extract Data using your safe() logic or direct table access
     local status = reactor.getStatus()
     local tempC  = math.floor(safe(reactor.getTemperature()) - 273.15)
     local dmg    = safe(reactor.getDamagePercent())
     local burn   = safe(reactor.getBurnRate())
     
-    local fMax = safe(reactor.getFuelCapacity())
-    local wMax = safe(reactor.getWasteCapacity())
-    local cMax = safe(reactor.getCoolantCapacity())
-    local sMax = safe(reactor.getSteamCapacity())
+    -- Using the .max property from the tables retrieved above
+    local fMax = fuelTbl.max or 0
+    local wMax = wasteTbl.max or 0
+    local cMax = coolantTbl.max or 0
+    local sMax = steamTbl.max or 0
 
-    local fuelP    = (fMax > 0) and (safe(reactor.getFuel()) / fMax) or 0
-    local wasteP   = (wMax > 0) and (safe(reactor.getWaste()) / wMax) or 0
-    local coolantP = (cMax > 0) and (safe(reactor.getCoolant()) / cMax) or 0
-    local steamP   = (sMax > 0) and (safe(reactor.getSteam() or reactor.getFluidStored()) / sMax) or 0
+    local fuelP    = (fMax > 0) and (fuelTbl.amount / fMax) or 0
+    local wasteP   = (wMax > 0) and (wasteTbl.amount / wMax) or 0
+    local coolantP = (cMax > 0) and (coolantTbl.amount / cMax) or 0
+    local steamP   = (sMax > 0) and (steamTbl.amount / sMax) or 0
 
     local eMax = safe(matrix.getMaxEnergy())
     local energyPct = (eMax > 0) and (safe(matrix.getEnergy()) / eMax) or 0
@@ -109,7 +116,7 @@ while true do
         error("SCRAM: SAFETY LIMITS EXCEEDED")
     end
 
-    -- UI Rendering (v6.7 Layout Revived)
+    -- UI Rendering
     term.clear()
     term.setCursorPos(1,1)
     term.setTextColor(colors.blue)
@@ -140,3 +147,4 @@ while true do
 
     sleep(REFRESH)
 end
+
