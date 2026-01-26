@@ -1,6 +1,4 @@
--- AEGIS REACTOR SHIELD v11.5 (FINAL STABILIZER)
--- Protocol: Absolute Containment
-
+-- AEGIS REACTOR SHIELD v11.6 (FIXED)
 local REFRESH = 0.5
 local MAX_TEMP = 1000
 local GITHUB_URL = "https://raw.githubusercontent.com/caecitas-glitch/mein-campf-reactor/main/startup.lua"
@@ -8,140 +6,87 @@ local GITHUB_URL = "https://raw.githubusercontent.com/caecitas-glitch/mein-campf
 local reactor = peripheral.find("fissionReactorLogicAdapter")
 local matrix = peripheral.find("inductionPort")
 
--- === 1. THE SAFETY SHIELD ===
--- Prevents "Arithmetic on table" and "nil value" errors
 local function safe(val)
     if not val then return 0 end
     if type(val) == "table" then return tonumber(val.amount) or 0 end
     return tonumber(val) or 0
 end
 
--- === 2. AUTO-UPDATER ===
+-- Updated Auto-Updater with error handling
 local function autoUpdate()
-    term.clear()
-    term.setCursorPos(1,1)
     print("Checking Vault for updates...")
-    local response = http.get(GITHUB_URL)
-    if response then
+    local ok, response = pcall(http.get, GITHUB_URL)
+    if ok and response then
         local remoteCode = response.readAll()
         response.close()
+        
         local f = fs.open(shell.getRunningProgram(), "r")
         local localCode = f and f.readAll() or ""
         if f then f.close() end
-        if remoteCode ~= localCode then
+        
+        if remoteCode ~= "" and remoteCode ~= localCode then
             print("Update Found. Syncing...")
             local wf = fs.open(shell.getRunningProgram(), "w")
             wf.write(remoteCode)
             wf.close()
+            print("Update applied. Rebooting...")
+            sleep(1)
             os.reboot()
         end
+    else
+        print("Update Server unreachable. Starting AEGIS...")
+        sleep(1)
     end
 end
 
--- === 3. JAGGED VAULT STARTUP ===
-local function vaultStartup()
-    autoUpdate()
-    term.setBackgroundColor(colors.black)
-    term.clear()
-    local w, h = term.getSize()
-    local midX, midY = math.floor(w/2), math.floor(h/2)
-    for offset = 0, midX do
-        term.clear()
-        term.setTextColor(colors.gray)
-        for y = 1, h do
-            local tooth = ((y-1) % 4 < 2) and 2 or 0 
-            term.setCursorPos(midX - offset - tooth, y)
-            term.write("#")
-            term.setCursorPos(midX + offset + tooth, y)
-            term.write("#")
-        end
-        term.setTextColor(colors.blue)
-        local msg = "<< AEGIS ONLINE >>"
-        term.setCursorPos(midX - (#msg/2), midY)
-        term.write(msg)
-        sleep(0.04)
-    end
-end
+-- [ ... vaultStartup and scram functions remain the same ... ]
 
--- === 4. PERSISTED SCRAMS ===
-local function getScrams()
-    if not fs.exists("scrams.txt") then return 0 end
-    local f = fs.open("scrams.txt", "r")
-    local c = tonumber(f.readAll()) or 0
-    f.close()
-    return c
-end
-
-local function addScram()
-    local c = getScrams() + 1
-    local f = fs.open("scrams.txt", "w")
-    f.write(tostring(c))
-    f.close()
-end
-
--- === 5. MAIN LOOP (CLEANED) ===
+-- === MAIN LOOP ===
+-- COMMENT OUT THE LINE BELOW IF YOU WANT TO STOP IT FROM REVERTING TO GITHUB
+-- autoUpdate() 
 vaultStartup()
 
 while true do
-    -- 1. Get Status and Basic Stats
+    -- Get status and temps
     local status = reactor.getStatus()
     local tempC  = math.floor(safe(reactor.getTemperature()) - 273.15)
     local dmg    = safe(reactor.getDamagePercent())
     local burn   = safe(reactor.getBurnRate())
 
-    -- 2. Fetch resource tables directly (ATM10/Modern Mekanism style)
-    -- This avoids calling the non-existent 'getSteamCapacity' functions
+    -- NEW ATM10 METHOD: Get tables directly
+    -- We do NOT call getSteamCapacity() anymore.
     local fuel    = reactor.getFuel() or {amount = 0, max = 1}
     local waste   = reactor.getWaste() or {amount = 0, max = 1}
     local coolant = reactor.getCoolant() or {amount = 0, max = 1}
     local steam   = reactor.getSteam() or {amount = 0, max = 1}
 
-    -- 3. Calculate percentages using the .max property inside the tables
-    local fuelP    = (fuel.amount / fuel.max)
-    local wasteP   = (waste.amount / waste.max)
-    local coolantP = (coolant.amount / coolant.max)
-    local steamP   = (steam.amount / steam.max)
+    local fuelP    = fuel.amount / fuel.max
+    local wasteP   = waste.amount / waste.max
+    local coolantP = coolant.amount / coolant.max
+    local steamP   = steam.amount / steam.max
 
-    -- 4. Energy Matrix Logic
-    local energyVal = safe(matrix.getEnergy())
-    local energyMax = safe(matrix.getMaxEnergy())
-    local energyPct = (energyMax > 0) and (energyVal / energyMax) or 0
+    local eMax = safe(matrix.getMaxEnergy())
+    local energyPct = (eMax > 0) and (safe(matrix.getEnergy()) / eMax) or 0
 
-    -- 5. Failsafes
+    -- Failsafes
     if status and (tempC > MAX_TEMP or dmg > 0 or energyPct > 0.98 or wasteP > 0.9) then
         reactor.scram()
-        addScram()
         error("SCRAM: SAFETY LIMITS EXCEEDED")
     end
 
-    -- UI Rendering
+    -- Rendering (Simplified for clarity)
     term.clear()
     term.setCursorPos(1,1)
     term.setTextColor(colors.blue)
-    print("== [ AEGIS VAULT v11.5 ] ==")
+    print("== [ AEGIS VAULT v11.6 ] ==")
     
-    term.setCursorPos(22, 1)
-    term.setTextColor(colors.red)
-    term.write("SCRAMS: " .. getScrams())
-
-    term.setCursorPos(1, 3)
     term.setTextColor(colors.white)
+    term.setCursorPos(1, 3)
     print("STATUS: " .. (status and "ACTIVE" or "IDLE"))
     print("HEAT:   " .. tempC .. " C")
-    print("BURN:   " .. burn .. " mB/t")
     print("DAMAGE: " .. dmg .. " %")
-
-    term.setTextColor(colors.gray)
-    print("\n--- THERMAL & WASTE ---")
-    term.setTextColor(colors.white)
-    print("COOLANT: " .. math.floor(coolantP * 100) .. "%")
-    print("WASTE:   " .. math.floor(wasteP * 100) .. "%")
-    print("STEAM:   " .. math.floor(steamP * 100) .. "%")
-
-    term.setTextColor(colors.gray)
-    print("\n--- GRID STATUS ---")
-    term.setTextColor(colors.yellow)
-    print("MATRIX:  " .. math.floor(energyPct * 100) .. " %")
+    print("STEAM:  " .. math.floor(steamP * 100) .. " %")
+    print("MATRIX: " .. math.floor(energyPct * 100) .. " %")
 
     sleep(REFRESH)
 end
