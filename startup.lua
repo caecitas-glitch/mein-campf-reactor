@@ -1,5 +1,5 @@
--- AEGIS REACTOR SHIELD v10.0
--- "Vault Protocol: Indestructible Edition"
+-- AEGIS REACTOR SHIELD v10.5
+-- "Vault Protocol: Update Verification Edition"
 
 local REFRESH = 0.5
 local MAX_TEMP = 1000
@@ -9,16 +9,17 @@ local reactor = peripheral.find("fissionReactorLogicAdapter")
 local matrix = peripheral.find("inductionPort")
 
 -- === 1. THE FOOLPROOF CONVERTER ===
--- Fixes EVERY crash in your screenshots
 local function safe(val)
-    if val == nil then return 0 end -- Fixes 'nil value' crashes
+    if val == nil then return 0 end
     if type(val) == "table" then 
-        return tonumber(val.amount) or 0 -- Extracts number from Mekanism tables
+        return tonumber(val.amount) or 0 
     end
-    return tonumber(val) or 0 -- Ensures it's a number
+    return tonumber(val) or 0
 end
 
--- === 2. AUTO-UPDATER ===
+-- === 2. AUTO-UPDATER WITH VERIFIED STATUS ===
+local updateStatus = "<< AEGIS ONLINE >>" -- Default message
+
 local function autoUpdate()
     term.clear()
     term.setCursorPos(1,1)
@@ -30,10 +31,12 @@ local function autoUpdate()
         local f = fs.open(shell.getRunningProgram(), "r")
         local localCode = f and f.readAll() or ""
         if f then f.close() end
+        
         if remoteCode ~= localCode then
-            print("Update Found. Overwriting...")
+            print("New Protocol Found. Overwriting...")
             local wf = fs.open(shell.getRunningProgram(), "w")
-            wf.write(remoteCode)
+            -- We temporarily modify the local message to confirm the update
+            wf.write(remoteCode:gsub('updateStatus = "<< AEGIS ONLINE >>"', 'updateStatus = "<< UPDATE DOWNLOADED >>"'))
             wf.close()
             os.reboot()
         end
@@ -57,10 +60,10 @@ local function vaultStartup()
             term.setCursorPos(midX + offset + tooth, y)
             term.write("#")
         end
-        term.setTextColor(colors.blue)
-        local msg = "<< AEGIS ONLINE >>"
-        term.setCursorPos(midX - (#msg/2), midY)
-        term.write(msg)
+        -- Displays the verified update status
+        term.setTextColor(updateStatus == "<< UPDATE DOWNLOADED >>" and colors.lime or colors.blue)
+        term.setCursorPos(midX - (#updateStatus/2), midY)
+        term.write(updateStatus)
         sleep(0.04)
     end
 end
@@ -69,7 +72,6 @@ end
 vaultStartup()
 
 while true do
-    -- Force everything to numbers immediately
     local status = reactor.getStatus()
     local tempC  = math.floor(safe(reactor.getTemperature()) - 273.15)
     local dmg    = safe(reactor.getDamagePercent())
@@ -88,17 +90,15 @@ while true do
     local energyMax = safe(matrix.getMaxEnergy()) or 1
     local energyPct = math.floor((energy / energyMax) * 100)
 
-    -- Failsafes
     if status and (tempC > MAX_TEMP or dmg > 0 or energyPct > 98 or (waste/wasteMax) > 0.9) then
         reactor.scram()
         error("SCRAM TRIGGERED")
     end
 
-    -- Full-Screen Dashboard
     term.clear()
     term.setCursorPos(1,1)
     term.setTextColor(colors.blue)
-    print("== [ AEGIS VAULT v10.0 ] ==")
+    print("== [ AEGIS VAULT v10.5 ] ==")
 
     term.setCursorPos(1, 3)
     term.setTextColor(colors.white)
