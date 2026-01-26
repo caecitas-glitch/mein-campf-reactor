@@ -1,27 +1,35 @@
 -- Configuration
 local GITHUB_URL = "https://raw.githubusercontent.com/caecitas-glitch/mein-campf-reactor/refs/heads/main/startup.lua"
-local VERSION = "1.3.0"
+local VERSION = "1.3.1"
 
--- Explicit Peripheral Wrapping
+-- Function: Diagnostic Print
+local function log(msg)
+    term.setTextColor(colors.yellow)
+    print("[SYSTEM] " .. msg)
+    term.setTextColor(colors.white)
+end
+
+-- 1. WRAPPING PERIPHERALS
+log("Wrapping peripherals...")
 local monitor = peripheral.wrap("monitor_0")
 local reactor = peripheral.wrap("fissionReactorLogicAdapter_1")
 local turbine = peripheral.wrap("turbineValve_0")
 local matrix  = peripheral.wrap("inductionPort_0")
 
--- Redirect all output to the monitor immediately
-if monitor then
-    term.redirect(monitor)
-    monitor.setTextScale(0.5)
-    term.setBackgroundColor(colors.black)
-    term.clear()
-else
-    print("CRITICAL ERROR: monitor_0 not found!")
-    return
-end
+-- 2. DIAGNOSTICS
+if not monitor then error("monitor_0 NOT FOUND. Check your modems!") end
+log("Monitor linked.")
+if not reactor then log("Warning: Reactor not found.") end
+if not turbine then log("Warning: Turbine not found.") end
+if not matrix  then log("Warning: Matrix not found.") end
 
--- --- AUTO-UPDATER ---
+-- 3. AUTO-UPDATER (Silent fail if no internet)
 local function checkForUpdates()
-    if not http then return end
+    log("Checking GitHub...")
+    if not http then 
+        log("HTTP disabled in config.")
+        return 
+    end
     local response = http.get(GITHUB_URL)
     if response then
         local remoteContent = response.readAll()
@@ -30,15 +38,19 @@ local function checkForUpdates()
         local localContent = f.readAll()
         f.close()
         if remoteContent ~= localContent and #remoteContent > 100 then
+            log("Update found! Saving...")
             local wf = fs.open(shell.getRunningProgram(), "w")
             wf.write(remoteContent)
             wf.close()
+            log("Rebooting in 3s...")
+            sleep(3)
             os.reboot()
         end
     end
+    log("Up to date.")
 end
 
--- --- FORMATTING ---
+-- 4. FORMATTING
 local function formatNum(n)
     if not n or n == 0 then return "0" end
     if n >= 1e12 then return string.format("%.2f T", n/1e12) end
@@ -48,90 +60,85 @@ local function formatNum(n)
     return tostring(math.floor(n))
 end
 
-local function drawHeader(title, y, color)
-    term.setCursorPos(1, y)
-    term.setBackgroundColor(color)
-    term.setTextColor(colors.white)
-    term.clearLine()
-    term.write(" " .. title)
-    term.setBackgroundColor(colors.black)
-end
-
--- --- MAIN LOOP ---
-local function main()
+-- 5. DRAWING LOGIC
+local function drawUI()
+    -- Switch output to monitor
+    term.redirect(monitor)
+    monitor.setTextScale(0.5)
+    
     while true do
         term.setBackgroundColor(colors.black)
         term.clear()
-
-        -- Safety Logic First
-        local status = "OPERATIONAL"
-        local statusCol = colors.green
-        if reactor then
-            if reactor.getDamage() > 0 or reactor.getTemperature() > 1150 then
-                reactor.setBurnRate(0) -- Emergency Cutoff
-                status = "!!! SCRAM !!!"
-                statusCol = colors.red
-            end
-        end
-
+        
         -- Header
-        drawHeader("SYSTEM MONITOR v" .. VERSION .. " | " .. status, 1, statusCol)
+        term.setCursorPos(1,1)
+        term.setBackgroundColor(colors.green)
+        term.clearLine()
+        term.write(" SYSTEM MONITOR v" .. VERSION .. " | ONLINE")
+        term.setBackgroundColor(colors.black)
 
-        -- 1. Reactor Stats
-        drawHeader("FISSION REACTOR", 3, colors.gray)
+        -- Reactor
+        term.setCursorPos(1, 3)
+        term.setTextColor(colors.yellow)
+        term.write(">> FISSION REACTOR")
         if reactor then
+            term.setTextColor(colors.white)
             term.setCursorPos(2, 4)
             term.write("Temp: " .. math.floor(reactor.getTemperature()) .. "K")
             term.setCursorPos(2, 5)
             term.write("Damage: " .. reactor.getDamage() .. "%")
             term.setCursorPos(2, 6)
             term.write("Burn: " .. reactor.getBurnRate() .. " mB/t")
-            term.setCursorPos(2, 7)
-            term.write("Fuel: " .. formatNum(reactor.getFuel().amount) .. " mB")
+            -- SCRAM Check
+            if reactor.getDamage() > 0 or reactor.getTemperature() > 1150 then
+                reactor.setBurnRate(0)
+            end
         else
-            term.setCursorPos(2, 4)
             term.setTextColor(colors.red)
-            term.write("Reactor Logic Adapter Missing")
+            term.setCursorPos(2, 4)
+            term.write("NO DATA")
         end
 
-        -- 2. Turbine Stats
-        drawHeader("INDUSTRIAL TURBINE", 9, colors.gray)
+        -- Turbine
+        term.setCursorPos(1, 8)
+        term.setTextColor(colors.cyan)
+        term.write(">> TURBINE")
         if turbine then
             term.setTextColor(colors.white)
-            term.setCursorPos(2, 10)
+            term.setCursorPos(2, 9)
             term.write("Gen: " .. formatNum(turbine.getProductionRate()) .. " FE/t")
-            term.setCursorPos(2, 11)
-            term.write("Flow: " .. formatNum(turbine.getFlowRate()) .. " mB/t")
-            term.setCursorPos(2, 12)
-            term.write("Steam: " .. formatNum(turbine.getSteam().amount) .. " mB")
         else
-            term.setCursorPos(2, 10)
             term.setTextColor(colors.red)
-            term.write("Turbine Valve Missing")
+            term.setCursorPos(2, 9)
+            term.write("NO DATA")
         end
 
-        -- 3. Matrix Stats
-        drawHeader("INDUCTION MATRIX", 14, colors.gray)
+        -- Matrix
+        term.setCursorPos(1, 11)
+        term.setTextColor(colors.magenta)
+        term.write(">> MATRIX")
         if matrix then
             term.setTextColor(colors.white)
-            term.setCursorPos(2, 15)
-            term.write("Stored: " .. formatNum(matrix.getEnergy()) .. " FE")
-            term.setCursorPos(2, 16)
+            term.setCursorPos(2, 12)
+            term.write("Store: " .. formatNum(matrix.getEnergy()) .. " FE")
+            term.setCursorPos(2, 13)
             term.setTextColor(colors.green)
-            term.write("Input:  " .. formatNum(matrix.getLastInput()) .. " FE/t")
-            term.setCursorPos(2, 17)
+            term.write("In:  " .. formatNum(matrix.getLastInput()) .. " FE/t")
+            term.setCursorPos(2, 14)
             term.setTextColor(colors.red)
-            term.write("Output: " .. formatNum(matrix.getLastOutput()) .. " FE/t")
+            term.write("Out: " .. formatNum(matrix.getLastOutput()) .. " FE/t")
         else
-            term.setCursorPos(2, 15)
+            term.setCursorPos(2, 12)
             term.setTextColor(colors.red)
-            term.write("Induction Port Missing")
+            term.write("NO DATA")
         end
 
         sleep(1)
     end
 end
 
--- Execution
+-- RUN
 checkForUpdates()
-main()
+log("Starting UI...")
+sleep(1)
+drawUI()
