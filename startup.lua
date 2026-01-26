@@ -1,50 +1,53 @@
--- AEGIS REACTOR SHIELD v9.5 
--- "Vault Protocol: Deep Scan Edition"
+-- AEGIS REACTOR SHIELD v9.7
+-- "Vault Protocol: Absolute Zero Error"
 
 local REFRESH = 0.5
 local MAX_TEMP = 1000
 local CHANNEL = 15
 local GITHUB_URL = "https://raw.githubusercontent.com/caecitas-glitch/mein-campf-reactor/main/startup.lua"
 
--- Peripherals
 local reactor = peripheral.find("fissionReactorLogicAdapter")
 local matrix = peripheral.find("inductionPort")
 local modem = peripheral.find("modem") or error("No Modem Found")
 
--- === 1. THE DEEP SCAN BUG-SLAYER ===
--- This function extracts the number NO MATTER WHAT Mekanism sends
-local function getNum(val)
-    if val == nil then return 0 end
-    if type(val) == "number" then return val end
+-- === 1. THE LOGIC SHIELD (Fixes the table error) ===
+local function toNum(val)
+    if not val then return 0 end
     if type(val) == "table" then
-        return tonumber(val.amount) or 0 -- Pulls the .amount from the table
+        return tonumber(val.amount) or 0 -- Forces extraction of the 'amount' field
     end
-    return 0
+    return tonumber(val) or 0
 end
 
--- Persisted Scram Counter
-local function getScramCount()
-    if not fs.exists("scrams.txt") then return 0 end
-    local f = fs.open("scrams.txt", "r")
-    local count = tonumber(f.readAll()) or 0
-    f.close()
-    return count
+-- === 2. AUTO-UPDATER KERNEL ===
+local function autoUpdate()
+    term.clear()
+    term.setCursorPos(1,1)
+    print("Checking Vault for updates...")
+    local response = http.get(GITHUB_URL)
+    if response then
+        local remoteCode = response.readAll()
+        response.close()
+        local f = fs.open(shell.getRunningProgram(), "r")
+        local localCode = f.readAll()
+        f.close()
+        if remoteCode ~= localCode then
+            print("Update Found. Overwriting...")
+            local wf = fs.open(shell.getRunningProgram(), "w")
+            wf.write(remoteCode)
+            wf.close()
+            os.reboot()
+        end
+    end
 end
 
-local function incrementScram()
-    local count = getScramCount() + 1
-    local f = fs.open("scrams.txt", "w")
-    f.write(tostring(count))
-    f.close()
-end
-
--- === 2. CINEMATIC VAULT REVEAL ===
+-- === 3. CINEMATIC VAULT STARTUP ===
 local function vaultStartup()
+    autoUpdate()
     term.setBackgroundColor(colors.black)
     term.clear()
     local w, h = term.getSize()
     local midX, midY = math.floor(w/2), math.floor(h/2)
-    
     for offset = 0, midX do
         term.clear()
         term.setTextColor(colors.gray)
@@ -63,49 +66,38 @@ local function vaultStartup()
     end
 end
 
--- === 3. MAIN LOOP ===
+-- === 4. MAIN LOOP ===
 vaultStartup()
 
 while true do
-    -- Force everything to numbers immediately
+    -- Force everything to numbers BEFORE math
     local status = reactor.getStatus()
-    local tempC  = math.floor(getNum(reactor.getTemperature()) - 273.15)
-    local dmg    = getNum(reactor.getDamagePercent())
-    local burn   = getNum(reactor.getBurnRate())
+    local tempC  = math.floor(toNum(reactor.getTemperature()) - 273.15)
+    local dmg    = toNum(reactor.getDamagePercent())
+    local burn   = toNum(reactor.getBurnRate())
     
-    -- Resource Gathering (Using getNum on everything)
-    local fuel       = getNum(reactor.getFuel())
-    local fuelMax    = getNum(reactor.getFuelCapacity())
-    local waste      = getNum(reactor.getWaste())
-    local wasteMax   = getNum(reactor.getWasteCapacity())
-    local coolant    = getNum(reactor.getCoolant())
-    local coolantMax = getNum(reactor.getCoolantCapacity())
-    local steam      = getNum(reactor.getSteam())
-    local steamMax   = getNum(reactor.getSteamCapacity())
+    local fuel       = toNum(reactor.getFuel())
+    local fuelMax    = toNum(reactor.getFuelCapacity())
+    local waste      = toNum(reactor.getWaste())
+    local wasteMax   = toNum(reactor.getWasteCapacity())
+    local coolant    = toNum(reactor.getCoolant())
+    local coolantMax = toNum(reactor.getCoolantCapacity())
 
-    -- Grid Stats
-    local energy    = getNum(matrix.getEnergy())
-    local energyMax = getNum(matrix.getMaxEnergy())
-    local energyPct = (energyMax > 0) and math.floor((energy / energyMax) * 100) or 0
-    local netFlow   = getNum(matrix.getLastInput()) - getNum(matrix.getLastOutput())
+    local energyPct  = math.floor((toNum(matrix.getEnergy()) / toNum(matrix.getMaxEnergy())) * 100)
+    local netFlow    = toNum(matrix.getLastInput()) - toNum(matrix.getLastOutput())
 
     -- Failsafes
     local wastePct = (wasteMax > 0) and (waste / wasteMax) or 0
     if status and (tempC > MAX_TEMP or dmg > 0 or energyPct > 98 or wastePct > 0.9) then
         reactor.scram()
-        incrementScram()
-        error("SCRAM TRIGGERED: SAFETY LIMITS EXCEEDED")
+        error("SCRAM TRIGGERED")
     end
 
-    -- UI Rendering
+    -- Full-Screen Dashboard
     term.clear()
     term.setCursorPos(1,1)
     term.setTextColor(colors.blue)
-    term.write("== [ AEGIS VAULT v9.5 ] ==")
-    
-    term.setCursorPos(22, 1)
-    term.setTextColor(colors.red)
-    term.write("MELTDOWNS STOPPED: " .. getScramCount())
+    print("== [ AEGIS VAULT v9.7 ] ==")
 
     term.setCursorPos(1, 3)
     term.setTextColor(colors.white)
@@ -115,22 +107,17 @@ while true do
     print("DAMAGE:  " .. dmg .. " %")
 
     term.setTextColor(colors.gray)
-    print("\n--- CORE DIAGNOSTICS ---")
+    print("\n--- THERMAL DATA ---")
     term.setTextColor(colors.white)
-    print("FUEL:    " .. ((fuelMax > 0) and math.floor((fuel/fuelMax)*100) or 0) .. "%")
-    print("WASTE:   " .. math.floor(wastePct * 100) .. "%")
     print("COOLANT: " .. ((coolantMax > 0) and math.floor((coolant/coolantMax)*100) or 0) .. "%")
+    print("WASTE:   " .. math.floor(wastePct * 100) .. "%")
 
     term.setTextColor(colors.gray)
-    print("\n--- GRID DYNAMICS ---")
+    print("\n--- GRID STATUS ---")
     term.setTextColor(colors.yellow)
     print("MATRIX:  " .. energyPct .. " %")
     term.setTextColor(colors.white)
     print("NET:     " .. math.floor(netFlow) .. " FE/t")
-
-    term.setCursorPos(1, 19)
-    term.setTextColor(colors.gray)
-    term.write("STEAM: " .. math.floor(steam) .. " / " .. math.floor(steamMax))
 
     sleep(REFRESH)
 end
