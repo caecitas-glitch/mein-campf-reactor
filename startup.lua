@@ -1,158 +1,101 @@
--- AEGIS-OS v10.0.0: IRON SENTRY (STRICT CONTAINMENT)
-local VERSION = "10.0.0"
-local GITHUB_URL = "https://raw.githubusercontent.com/caecitas-glitch/mein-campf-reactor/refs/heads/main/startup.lua"
+-- === POCKET CLICKER EXAMPLE ===
+-- This is a simple example of handling touch inputs on a Pocket Computer.
 
--- Peripherals
-local monitor = peripheral.wrap("monitor_0")
-local reactor = peripheral.wrap("fissionReactorLogicAdapter_1")
-local turbine = peripheral.wrap("turbineValve_0")
-local matrix  = peripheral.wrap("inductionPort_0")
+local count = 0
+local w, h = term.getSize() -- Pocket computers usually have w=26, h=20
 
-local w, h = 0, 0
-if monitor then w, h = monitor.getSize() end
-local sidebarW = 12
-
--- Persistent SCRAM state and History
-local isScrammed = false
-local lastScramReason = "NONE"
-local hist = { mE = 0, rF = 0, time = os.epoch("utc") }
-local trends = { energy = 0, fuel = 0 }
-
--- --- UTILS ---
-local function safeCall(obj, f)
-    local success, result = pcall(function() return obj[f]() end)
-    return success and result or nil
+-- --- Helper Function to Draw Colored Boxes/Buttons ---
+-- x, y: starting coordinates
+-- width, height: size of the button
+-- bgCol, textCol: colors
+-- text: what to write inside
+local function drawButton(x, y, width, height, bgCol, textCol, text)
+    term.setBackgroundColor(bgCol)
+    term.setTextColor(textCol)
+    for i = 0, height - 1 do
+        term.setCursorPos(x, y + i)
+        -- Draw a solid line of the background color
+        term.write(string.rep(" ", width))
+    end
+    -- Center the text inside the button box
+    local textX = x + math.floor((width - #text) / 2)
+    local textY = y + math.floor(height / 2)
+    term.setCursorPos(textX, textY)
+    term.write(text)
+    -- Reset colors back to black/white standard
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.white)
 end
 
-local function formatNum(n)
-    if not n or type(n) ~= "number" then return "0" end
-    if n >= 1e9 then return string.format("%.2fG", n/1e9) end
-    if n >= 1e6 then return string.format("%.2fM", n/1e6) end
-    if n >= 1e3 then return string.format("%.2fk", n/1e3) end
-    return tostring(math.floor(n))
-end
-
--- --- THE SINGULARITY BOOT ---
-local function playSingularity()
-    term.redirect(monitor or term)
+-- --- The Main Drawing Routine ---
+local function drawUI()
     term.setBackgroundColor(colors.black)
     term.clear()
-    local cx, cy = math.floor((w - sidebarW) / 2), math.floor(h / 2)
+
+    -- 1. Header
+    term.setCursorPos(1, 1)
+    term.setBackgroundColor(colors.blue)
+    term.clearLine()
+    -- Center the title
+    local title = "POCKET CLICKER"
+    term.setCursorPos(math.floor((w-#title)/2) + 1, 1)
+    term.write(title)
+    term.setBackgroundColor(colors.black)
+
+    -- 2. The Big Number Display
+    local countStr = tostring(count)
+    term.setTextColor(colors.yellow)
+    -- Center the number roughly in the middle of the screen
+    term.setCursorPos(math.floor((w-#countStr)/2) + 1, 7)
+    -- Make it look "bold" by drawing it twice slightly offset (optional trick)
+    term.write(countStr)
+    term.setCursorPos(math.floor((w-#countStr)/2) + 2, 7)
+    term.write(countStr)
+    term.setTextColor(colors.white)
+
+
+    -- 3. The Buttons (Defining their locations)
+    -- We define these coordinates here so we can check them later in the main loop
+    -- Button Layout: [ - ]   [ RESET ]   [ + ]
     
-    -- Wave condensation
-    for r = 10, 1, -2 do
-        term.clear()
-        term.setTextColor(colors.white)
-        for a = 0, 360, 15 do
-            local x = math.floor(cx + math.cos(math.rad(a)) * (r * 2))
-            local y = math.floor(cy + math.sin(math.rad(a)) * r)
-            if x > 0 and x < (w - sidebarW) then term.setCursorPos(x, y) term.write("o") end
-        end
-        sleep(0.1)
-    end
-    -- Blue explosion
-    term.clear()
-    term.setTextColor(colors.blue)
-    term.setCursorPos(cx, cy) term.write("@")
-    sleep(0.15)
-    for r = 1, 12 do
-        for a = 0, 360, 30 do
-            local x = math.floor(cx + math.cos(math.rad(a)) * r)
-            local y = math.floor(cy + math.sin(math.rad(a)) * (r/2))
-            if x > 0 and x < (w - sidebarW) then term.setCursorPos(x, y) term.write("*") end
-        end
-        sleep(0.04)
-    end
-    term.clear()
+    -- Minus Button (Red): X=2, Y=12, Width=6, Height=3
+    drawButton(2, 12, 6, 3, colors.red, colors.white, "-")
+
+    -- Reset Button (Gray): X=10, Y=12, Width=8, Height=3
+    drawButton(10, 12, 8, 3, colors.gray, colors.white, "RESET")
+
+    -- Plus Button (Green): X=20, Y=12, Width=6, Height=3
+    drawButton(20, 12, 6, 3, colors.green, colors.white, "+")
 end
 
--- --- MAIN UI ---
-local function run()
-    while true do
-        -- 1. STRICT DATA COLLECTION
-        local rData = {
-            temp = safeCall(reactor, "getTemperature") or 0,
-            dmg = safeCall(reactor, "getDamage") or 0,
-            burn = safeCall(reactor, "getBurnRate") or 0,
-            fuel = (safeCall(reactor, "getFuel") or {amount=0}).amount,
-            waste = (safeCall(reactor, "getWaste") or {amount=0}).amount,
-            wasteMax = safeCall(reactor, "getWasteCapacity") or 1,
-            cool = (safeCall(reactor, "getCoolant") or {amount=0}).amount
-        }
-        local tData = {
-            steam = (safeCall(turbine, "getSteam") or {amount=0}).amount,
-            steamMax = safeCall(turbine, "getSteamCapacity") or 1,
-            gen = safeCall(turbine, "getProductionRate") or 0
-        }
-        local mData = {
-            stored = safeCall(matrix, "getEnergy") or 0,
-            max = safeCall(matrix, "getMaxEnergy") or 1
-        }
+-- --- Main Program Loop ---
+while true do
+    -- Draw the screen with current count
+    drawUI()
 
-        -- 2. STRICT ENFORCEMENT PROTOCOL
-        local currentReason = "NONE"
-        if rData.dmg > 0 then currentReason = "CORE DAMAGE"
-        elseif rData.temp > 1150 then currentReason = "OVERHEAT"
-        elseif (rData.waste / rData.wasteMax) > 0.95 then currentReason = "WASTE FULL"
-        elseif (tData.steam / tData.steamMax) > 0.98 then currentReason = "STEAM BACKUP"
-        elseif (mData.stored / mData.max) > 0.99 then currentReason = "POWER GRID FULL"
-        end
+    -- Wait for input. Pocket Computers send "mouse_click" when tapped in hand.
+    -- event: the type of event (e.g., "mouse_click")
+    -- button: 1 for left click, 2 for right, etc.
+    -- x, y: The coordinates on screen where you tapped.
+    local event, button, x, y = os.pullEvent("mouse_click")
 
-        if currentReason ~= "NONE" then
-            pcall(function() reactor.setBurnRate(0) end)
-            pcall(function() reactor.scram() end)
-            isScrammed = true
-            lastScramReason = currentReason
-        else
-            isScrammed = false
-        end
-
-        -- 3. TRENDS
-        local now = os.epoch("utc")
-        local dt = (now - hist.time) / 60000
-        if dt > 0.05 then
-            trends.energy = (mData.stored - hist.mE) / dt
-            trends.fuel = (rData.fuel - hist.rF) / dt
-            hist.mE, hist.rF, hist.time = mData.stored, rData.fuel, now
-        end
-
-        -- 4. RENDERING
-        term.setBackgroundColor(colors.black)
-        term.clear()
+    -- Check if the click happened inside our button definition areas.
+    -- We check if Y is between the top (12) and bottom (14) rows first.
+    if y >= 12 and y <= 14 then
+        -- Now check X coordinates for specific buttons
         
-        -- Header (Sticky SCRAM indicator)
-        term.setCursorPos(1, 1)
-        term.setBackgroundColor(isScrammed and colors.red or colors.blue)
-        term.clearLine()
-        term.write(" CORE: " .. (isScrammed and "LOCKED - " .. lastScramReason or "ACTIVE"))
-        term.setBackgroundColor(colors.black)
-
-        -- Stats Array
-        term.setTextColor(colors.yellow)
-        term.setCursorPos(1, 3) term.write(" [CORE STATS] ")
-        term.setTextColor(colors.white)
-        term.setCursorPos(2, 4) term.write("Temp: " .. math.floor(rData.temp) .. "K | Dmg: " .. rData.dmg .. "%")
-        term.setCursorPos(2, 5) term.write("Fuel: " .. formatNum(rData.fuel) .. " | Cool: " .. formatNum(rData.cool))
-        term.setCursorPos(2, 6) term.write("Waste: " .. formatNum(rData.waste) .. "/" .. formatNum(rData.wasteMax))
-
-        term.setTextColor(colors.cyan)
-        term.setCursorPos(1, 8) term.write(" [DYNAMICS] ")
-        term.setTextColor(colors.white)
-        term.setCursorPos(2, 9) term.write("Steam: " .. formatNum(tData.steam) .. " (" .. string.format("%.1f", (tData.steam/tData.steamMax)*100) .. "%)")
-        term.setCursorPos(2, 10) term.write("Matrix: " .. formatNum(mData.stored) .. " (" .. string.format("%.1f", (mData.stored/mData.max)*100) .. "%)")
-
-        term.setTextColor(colors.magenta)
-        term.setCursorPos(1, 12) term.write(" [TRENDS] ")
-        term.setCursorPos(2, 13) 
-        term.setTextColor(trends.energy >= 0 and colors.green or colors.red)
-        term.write("Net Power: " .. formatNum(trends.energy) .. " FE/min")
-        term.setCursorPos(2, 14)
-        term.setTextColor(trends.fuel < 0 and colors.red or colors.green)
-        term.write("Fuel Delta: " .. formatNum(trends.fuel) .. " mB/min")
-
-        sleep(1)
+        -- Minus Button Area (X is between 2 and 7 inclusive)
+        if x >= 2 and x <= 2 + 6 - 1 then
+            count = count - 1
+        
+        -- Reset Button Area (X is between 10 and 17 inclusive)
+        elseif x >= 10 and x <= 10 + 8 - 1 then
+            count = 0
+            
+        -- Plus Button Area (X is between 20 and 25 inclusive)
+        elseif x >= 20 and x <= 20 + 6 - 1 then
+            count = count + 1
+        end
     end
+    -- The loop immediately repeats, redrawing the UI with the new count number.
 end
-
-playSingularity()
-run()
