@@ -1,5 +1,5 @@
--- AEGIS REACTOR SHIELD v8.0 
--- "Vault Protocol: Dreadnought Edition"
+-- AEGIS REACTOR SHIELD v8.5 
+-- "Vault Protocol: Ultimate Sentinel"
 
 local REFRESH = 0.5
 local MAX_TEMP = 1000
@@ -27,16 +27,16 @@ local function incrementScram()
     f.close()
 end
 
--- === 2. BUG CRUSHER: SAFE DATA FETCHERS ===
--- Fixes the "Arithmetic on table value" error
+-- === 2. THE BUG CRUSHER: SAFE DATA FETCHERS ===
+-- Fixes "arithmetic on table value"
 local function getAmount(func)
     if not func then return 0 end
     local val = func()
-    if type(val) == "table" then return val.amount or 0 end
+    if type(val) == "table" then return val.amount or 0 end -- Extracts number from Mekanism table
     return val or 0
 end
 
--- Fixes the "getSteam is nil" error
+-- Fixes 'getSteam' is nil
 local function getSafeSteam()
     local f = reactor.getSteam or reactor.getSteamStored or reactor.getFluidStored
     return getAmount(f)
@@ -102,14 +102,13 @@ vaultStartup()
 local steamHistory = {}
 
 while true do
-    -- Core Stats
+    -- Acquisition
     local status = reactor.getStatus()
     local tempC = math.floor((reactor.getTemperature() or 273.15) - 273.15)
     local dmg = reactor.getDamagePercent() or 0
     local burn = reactor.getBurnRate() or 0
-    local maxBurn = reactor.getMaxBurnRate() or 0
     
-    -- Fixed Resource Logic
+    -- Safety-wrapped resources
     local steam = getSafeSteam()
     local steamMax = getAmount(reactor.getSteamCapacity or reactor.getFluidCapacity) or 1
     local coolant = getAmount(reactor.getCoolant)
@@ -126,18 +125,18 @@ while true do
     local netFlow = (matrix.getLastInput() or 0) - (matrix.getLastOutput() or 0)
 
     -- Failsafes
-    if status and (tempC > MAX_TEMP or dmg > 0 or energyPct > 98 or waste/wasteMax > 0.9) then
+    if status and (tempC > MAX_TEMP or dmg > 0 or energyPct > 98 or (waste/wasteMax) > 0.9) then
         reactor.scram()
         incrementScram()
         modem.transmit(CHANNEL, CHANNEL, {alert="SAFETY BREACH", scram=true})
         error("SCRAM: SYSTEM SECURED")
     end
 
-    -- UI Rendering (Zero Dead Space)
+    -- Rendering
     term.clear()
     term.setCursorPos(1,1)
     term.setTextColor(colors.blue)
-    term.write("== [ AEGIS VAULT v8.0 ] ==")
+    term.write("== [ AEGIS VAULT v8.5 ] ==")
     
     term.setCursorPos(21, 1)
     term.setTextColor(colors.red)
@@ -147,18 +146,22 @@ while true do
     term.setTextColor(colors.white)
     print("STATUS:  " .. (status and "ACTIVE" or "IDLE"))
     print("HEAT:    " .. tempC .. " C")
-    print("BURN:    " .. burn .. " / " .. maxBurn .. " mB/t")
+    print("BURN:    " .. burn .. " mB/t")
     print("DAMAGE:  " .. dmg .. " %")
 
     term.setTextColor(colors.gray)
-    print("\n--- CHEMICAL BALANCES ---")
+    print("\n--- CORE BALANCES ---")
     term.setTextColor(colors.white)
-    print("FUEL:    " .. math.floor((fuel/fuelMax)*100) .. "% (" .. formatNum(fuel) .. " mB)")
+    print("FUEL:    " .. math.floor((fuel/fuelMax)*100) .. "% (" .. formatNum(fuel) .. ")")
+    
     term.write("WASTE:   ")
     term.setTextColor(waste/wasteMax > 0.8 and colors.orange or colors.lime)
-    print(math.floor((waste/wasteMax)*100) .. "% (" .. formatNum(waste) .. " mB)")
+    print(math.floor((waste/wasteMax)*100) .. "% (" .. formatNum(waste) .. ")")
+    
     term.setTextColor(colors.white)
-    print("COOLANT: " .. math.floor((coolant/coolantMax)*100) .. "% (" .. formatNum(coolant) .. " mB)")
+    term.write("COOLANT: ")
+    term.setTextColor(coolant/coolantMax < 0.2 and colors.red or colors.lime)
+    print(math.floor((coolant/coolantMax)*100) .. "% (" .. formatNum(coolant) .. ")")
 
     term.setTextColor(colors.gray)
     print("\n--- GRID DYNAMICS ---")
