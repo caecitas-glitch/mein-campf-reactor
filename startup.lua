@@ -1,97 +1,152 @@
--- Configuration
+-- PROJECT CATACLYSM: Tactical Reactor OS
+local VERSION = "2.0.0"
 local GITHUB_URL = "https://raw.githubusercontent.com/caecitas-glitch/mein-campf-reactor/refs/heads/main/startup.lua"
-local VERSION = "1.3.2"
 
--- Explicit Peripheral Wrapping
+-- Peripherals
 local monitor = peripheral.wrap("monitor_0")
 local reactor = peripheral.wrap("fissionReactorLogicAdapter_1")
 local turbine = peripheral.wrap("turbineValve_0")
 local matrix  = peripheral.wrap("inductionPort_0")
 
-if monitor then
-    term.redirect(monitor)
-    monitor.setTextScale(0.5)
-end
+-- Trend Tracking
+local history = { matrixE = 0, reactorF = 0, reactorW = 0, time = os.epoch("utc") }
+local trends = { energy = 0, fuel = 0, waste = 0 }
 
--- --- SAFETY UTILS ---
--- This prevents the "nil value" crash by checking if the function exists
+-- --- UTILS ---
 local function safeCall(obj, func, ...)
-    if obj and obj[func] then
-        return obj[func](...)
-    end
+    if obj and obj[func] then return obj[func](...) end
     return nil
 end
 
 local function formatNum(n)
     if not n or type(n) ~= "number" then return "0" end
-    if n >= 1e12 then return string.format("%.2f T", n/1e12) end
-    if n >= 1e9 then return string.format("%.2f G", n/1e9) end
-    if n >= 1e6 then return string.format("%.2f M", n/1e6) end
-    if n >= 1e3 then return string.format("%.2f k", n/1e3) end
-    return tostring(math.floor(n))
+    local absN = math.abs(n)
+    local suffix = n < 0 and "-" or ""
+    if absN >= 1e12 then return string.format("%s%.2fT", suffix, absN/1e12) end
+    if absN >= 1e9 then return string.format("%s%.2fG", suffix, absN/1e9) end
+    if absN >= 1e6 then return string.format("%s%.2fM", suffix, absN/1e6) end
+    if absN >= 1e3 then return string.format("%s%.2fk", suffix, absN/1e3) end
+    return suffix .. tostring(math.floor(absN))
 end
 
--- --- DRAWING ---
-local function drawHeader(title, y, color)
+-- --- ANIMATION & UI ---
+local function bootSequence()
+    term.redirect(monitor or term)
+    monitor.setTextScale(0.5)
+    term.setBackgroundColor(colors.black)
+    term.clear()
+    
+    local lines = {
+        "INITIALIZING PROJECT CATACLYSM...",
+        "LINKING NEURAL NETWORK... OK",
+        "SYNCING CORE ADAPTERS... OK",
+        "ESTABLISHING SUBSPACE LINK... OK",
+        "READY."
+    }
+    
+    for i, line in ipairs(lines) do
+        term.setCursorPos(2, i + 2)
+        textutils.slowWrite(line, 25)
+        sleep(0.2)
+    end
+    sleep(1)
+end
+
+local function drawHeader(title, y, bg, fg)
     term.setCursorPos(1, y)
-    term.setBackgroundColor(color)
-    term.setTextColor(colors.white)
+    term.setBackgroundColor(bg or colors.gray)
+    term.setTextColor(fg or colors.white)
     term.clearLine()
     term.write(" " .. title)
     term.setBackgroundColor(colors.black)
 end
 
-local function main()
+-- --- CORE LOOP ---
+local function run()
     while true do
-        term.setBackgroundColor(colors.black)
-        term.clear()
-
-        -- 1. Reactor Stats & Safety
-        local dmg = safeCall(reactor, "getDamage") or 0
-        local temp = safeCall(reactor, "getTemperature") or 0
-        local burn = safeCall(reactor, "getBurnRate") or 0
-        local status = safeCall(reactor, "getStatus") and "ONLINE" or "OFFLINE"
+        local now = os.epoch("utc")
+        local dt = (now - history.time) / 1000
         
-        if dmg > 0 or temp > 1150 then
-            safeCall(reactor, "setBurnRate", 0)
-            status = "!! SCRAM !!"
+        -- 1. DATA COLLECTION
+        local mE = safeCall(matrix, "getEnergy") or 0
+        local rF = (safeCall(reactor, "getFuel") or {amount=0}).amount
+        local rW = (safeCall(reactor, "getWaste") or {amount=0}).amount
+        
+        -- Trend Calculation
+        if dt > 0 then
+            trends.energy = (mE - history.matrixE) / dt
+            trends.fuel = (rF - history.reactorF) / dt
+            trends.waste = (rW - history.reactorW) / dt
         end
-
-        drawHeader("FISSION REACTOR | " .. status, 1, status == "!! SCRAM !!" and colors.red or colors.gray)
-        term.setCursorPos(2, 2)
-        term.write("Temp: " .. math.floor(temp) .. "K")
-        term.setCursorPos(2, 3)
-        term.write("Damage: " .. dmg .. "%")
-        term.setCursorPos(2, 4)
-        term.write("Burn: " .. burn .. " mB/t")
-
-        -- 2. Turbine Stats
-        drawHeader("INDUSTRIAL TURBINE", 6, colors.gray)
-        local prod = safeCall(turbine, "getProductionRate") or 0
-        local flow = safeCall(turbine, "getFlowRate") or 0
-        term.setCursorPos(2, 7)
-        term.write("Gen: " .. formatNum(prod) .. " FE/t")
-        term.setCursorPos(2, 8)
-        term.write("Flow: " .. formatNum(flow) .. " mB/t")
-
-        -- 3. Matrix Stats
-        drawHeader("INDUCTION MATRIX", 10, colors.gray)
-        local energy = safeCall(matrix, "getEnergy") or 0
-        local lastIn = safeCall(matrix, "getLastInput") or 0
-        local lastOut = safeCall(matrix, "getLastOutput") or 0
         
-        term.setCursorPos(2, 11)
-        term.write("Stored: " .. formatNum(energy) .. " FE")
-        term.setCursorPos(2, 12)
-        term.setTextColor(colors.green)
-        term.write("In:  " .. formatNum(lastIn) .. " FE/t")
-        term.setCursorPos(2, 13)
-        term.setTextColor(colors.red)
-        term.write("Out: " .. formatNum(lastOut) .. " FE/t")
+        history.matrixE, history.reactorF, history.reactorW, history.time = mE, rF, rW, now
+
+        -- 2. RENDERING
+        term.clear()
+        drawHeader("CATACLYSM OS v" .. VERSION .. " | SYSTEM STABLE", 1, colors.cyan, colors.black)
+
+        -- REACTOR SECTION
+        drawHeader("FISSION CORE", 3, colors.red)
+        local rTemp = safeCall(reactor, "getTemperature") or 0
+        local rDmg = safeCall(reactor, "getDamage") or 0
+        local rStatus = safeCall(reactor, "getStatus") and "ONLINE" or "OFFLINE"
+        
         term.setTextColor(colors.white)
+        term.setCursorPos(2, 4) term.write("STATUS: " .. rStatus)
+        term.setCursorPos(2, 5) term.write(string.format("CORE: %dK | DMG: %d%%", rTemp, rDmg))
+        
+        term.setCursorPos(2, 6)
+        term.write("FUEL: " .. formatNum(rF) .. " mB ")
+        term.setTextColor(trends.fuel < 0 and colors.red or colors.green)
+        term.write("(" .. formatNum(trends.fuel) .. "/s)")
+        
+        term.setTextColor(colors.white)
+        term.setCursorPos(2, 7)
+        term.write("WASTE: " .. formatNum(rW) .. " mB ")
+        term.setTextColor(trends.waste > 0 and colors.orange or colors.green)
+        term.write("(+" .. formatNum(trends.waste) .. "/s)")
+
+        -- TURBINE SECTION
+        drawHeader("TURBINE DYNAMICS", 9, colors.blue)
+        term.setTextColor(colors.white)
+        local tGen = safeCall(turbine, "getProductionRate") or 0
+        local tFlow = safeCall(turbine, "getFlowRate") or 0
+        local tSteam = (safeCall(turbine, "getSteam") or {amount=0}).amount
+        term.setCursorPos(2, 10) term.write("OUTPUT: " .. formatNum(tGen) .. " FE/t")
+        term.setCursorPos(2, 11) term.write("FLOW: " .. formatNum(tFlow) .. " mB/t")
+        term.setCursorPos(2, 12) term.write("STEAM: " .. formatNum(tSteam) .. " mB")
+
+        -- MATRIX SECTION
+        drawHeader("STORAGE GRID", 14, colors.purple)
+        term.setTextColor(colors.white)
+        local mMax = safeCall(matrix, "getMaxEnergy") or 1
+        term.setCursorPos(2, 15) term.write("STORE: " .. formatNum(mE) .. " / " .. formatNum(mMax))
+        
+        term.setCursorPos(2, 16)
+        term.write("TREND: ")
+        term.setTextColor(trends.energy >= 0 and colors.green or colors.red)
+        term.write(formatNum(trends.energy) .. " FE/s")
+        
+        -- PROGRESS BAR
+        local barWidth = 24
+        local fill = math.floor((mE / mMax) * barWidth)
+        term.setCursorPos(2, 17)
+        term.setTextColor(colors.white)
+        term.write("[")
+        term.setBackgroundColor(colors.purple)
+        term.write(string.rep(" ", fill))
+        term.setBackgroundColor(colors.black)
+        term.write(string.rep("-", barWidth - fill))
+        term.write("]")
+
+        -- Safety SCRAM
+        if rDmg > 0 or rTemp > 1180 then
+            safeCall(reactor, "setBurnRate", 0)
+        end
 
         sleep(1)
     end
 end
 
-main()
+bootSequence()
+run()
