@@ -1,25 +1,24 @@
--- AEGIS REACTOR SHIELD v9.7
--- "Vault Protocol: Absolute Zero Error"
+-- AEGIS REACTOR SHIELD v10.0
+-- "Vault Protocol: Indestructible Edition"
 
 local REFRESH = 0.5
 local MAX_TEMP = 1000
-local CHANNEL = 15
 local GITHUB_URL = "https://raw.githubusercontent.com/caecitas-glitch/mein-campf-reactor/main/startup.lua"
 
 local reactor = peripheral.find("fissionReactorLogicAdapter")
 local matrix = peripheral.find("inductionPort")
-local modem = peripheral.find("modem") or error("No Modem Found")
 
--- === 1. THE LOGIC SHIELD (Fixes the table error) ===
-local function toNum(val)
-    if not val then return 0 end
-    if type(val) == "table" then
-        return tonumber(val.amount) or 0 -- Forces extraction of the 'amount' field
+-- === 1. THE FOOLPROOF CONVERTER ===
+-- Fixes EVERY crash in your screenshots
+local function safe(val)
+    if val == nil then return 0 end -- Fixes 'nil value' crashes
+    if type(val) == "table" then 
+        return tonumber(val.amount) or 0 -- Extracts number from Mekanism tables
     end
-    return tonumber(val) or 0
+    return tonumber(val) or 0 -- Ensures it's a number
 end
 
--- === 2. AUTO-UPDATER KERNEL ===
+-- === 2. AUTO-UPDATER ===
 local function autoUpdate()
     term.clear()
     term.setCursorPos(1,1)
@@ -29,8 +28,8 @@ local function autoUpdate()
         local remoteCode = response.readAll()
         response.close()
         local f = fs.open(shell.getRunningProgram(), "r")
-        local localCode = f.readAll()
-        f.close()
+        local localCode = f and f.readAll() or ""
+        if f then f.close() end
         if remoteCode ~= localCode then
             print("Update Found. Overwriting...")
             local wf = fs.open(shell.getRunningProgram(), "w")
@@ -41,7 +40,7 @@ local function autoUpdate()
     end
 end
 
--- === 3. CINEMATIC VAULT STARTUP ===
+-- === 3. CINEMATIC JAGGED VAULT STARTUP ===
 local function vaultStartup()
     autoUpdate()
     term.setBackgroundColor(colors.black)
@@ -70,25 +69,27 @@ end
 vaultStartup()
 
 while true do
-    -- Force everything to numbers BEFORE math
+    -- Force everything to numbers immediately
     local status = reactor.getStatus()
-    local tempC  = math.floor(toNum(reactor.getTemperature()) - 273.15)
-    local dmg    = toNum(reactor.getDamagePercent())
-    local burn   = toNum(reactor.getBurnRate())
+    local tempC  = math.floor(safe(reactor.getTemperature()) - 273.15)
+    local dmg    = safe(reactor.getDamagePercent())
+    local burn   = safe(reactor.getBurnRate())
     
-    local fuel       = toNum(reactor.getFuel())
-    local fuelMax    = toNum(reactor.getFuelCapacity())
-    local waste      = toNum(reactor.getWaste())
-    local wasteMax   = toNum(reactor.getWasteCapacity())
-    local coolant    = toNum(reactor.getCoolant())
-    local coolantMax = toNum(reactor.getCoolantCapacity())
+    local fuel       = safe(reactor.getFuel())
+    local fuelMax    = safe(reactor.getFuelCapacity()) or 1
+    local waste      = safe(reactor.getWaste())
+    local wasteMax   = safe(reactor.getWasteCapacity()) or 1
+    local coolant    = safe(reactor.getCoolant())
+    local coolantMax = safe(reactor.getCoolantCapacity()) or 1
+    local steam      = safe(reactor.getSteam() or reactor.getFluidStored())
+    local steamMax   = safe(reactor.getSteamCapacity()) or 1
 
-    local energyPct  = math.floor((toNum(matrix.getEnergy()) / toNum(matrix.getMaxEnergy())) * 100)
-    local netFlow    = toNum(matrix.getLastInput()) - toNum(matrix.getLastOutput())
+    local energy    = safe(matrix.getEnergy())
+    local energyMax = safe(matrix.getMaxEnergy()) or 1
+    local energyPct = math.floor((energy / energyMax) * 100)
 
     -- Failsafes
-    local wastePct = (wasteMax > 0) and (waste / wasteMax) or 0
-    if status and (tempC > MAX_TEMP or dmg > 0 or energyPct > 98 or wastePct > 0.9) then
+    if status and (tempC > MAX_TEMP or dmg > 0 or energyPct > 98 or (waste/wasteMax) > 0.9) then
         reactor.scram()
         error("SCRAM TRIGGERED")
     end
@@ -97,7 +98,7 @@ while true do
     term.clear()
     term.setCursorPos(1,1)
     term.setTextColor(colors.blue)
-    print("== [ AEGIS VAULT v9.7 ] ==")
+    print("== [ AEGIS VAULT v10.0 ] ==")
 
     term.setCursorPos(1, 3)
     term.setTextColor(colors.white)
@@ -107,17 +108,17 @@ while true do
     print("DAMAGE:  " .. dmg .. " %")
 
     term.setTextColor(colors.gray)
-    print("\n--- THERMAL DATA ---")
+    print("\n--- CORE TELEMETRY ---")
     term.setTextColor(colors.white)
-    print("COOLANT: " .. ((coolantMax > 0) and math.floor((coolant/coolantMax)*100) or 0) .. "%")
-    print("WASTE:   " .. math.floor(wastePct * 100) .. "%")
+    print("FUEL:    " .. math.floor((fuel/fuelMax)*100) .. "%")
+    print("WASTE:   " .. math.floor((waste/wasteMax)*100) .. "%")
+    print("COOLANT: " .. math.floor((coolant/coolantMax)*100) .. "%")
+    print("STEAM:   " .. math.floor((steam/steamMax)*100) .. "%")
 
     term.setTextColor(colors.gray)
-    print("\n--- GRID STATUS ---")
+    print("\n--- GRID TELEMETRY ---")
     term.setTextColor(colors.yellow)
     print("MATRIX:  " .. energyPct .. " %")
-    term.setTextColor(colors.white)
-    print("NET:     " .. math.floor(netFlow) .. " FE/t")
 
     sleep(REFRESH)
 end
