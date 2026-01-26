@@ -1,5 +1,5 @@
--- AEGIS-OS v20.0.0: OBSIDIAN PROTOCOL (FINAL)
-local VERSION = "20.0.0"
+-- AEGIS-OS v21.0.0: OBSIDIAN PRIME (FINAL)
+local VERSION = "21.0.0"
 
 -- 1. HARDWARE LINKING
 local device = term.current() 
@@ -123,7 +123,7 @@ end
 -- 6. THE TOUCH SENSOR
 local function touchListener()
     while true do
-        local ev, button, x, y = os.pullEvent("mouse_click")
+        local ev, button, x, y = os.pullEvent("mouse_click") -- Standard event
         local burn = getSafe(reactor, "getBurnRate") or 0
         
         if x >= 16 and x <= 23 then
@@ -141,4 +141,4 @@ end
 
 -- EXECUTION
 playSingularity()
-parallel.waitForAny(monitorCore, touchListener)
+parallel.waitForAny(monitorCore, touchListener) -- High compatibility loop
