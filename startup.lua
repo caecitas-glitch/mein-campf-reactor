@@ -1,5 +1,5 @@
--- AEGIS REACTOR SHIELD v9.0 
--- "Vault Protocol: Bug-Slayer Edition"
+-- AEGIS REACTOR SHIELD v9.5 
+-- "Vault Protocol: Deep Scan Edition"
 
 local REFRESH = 0.5
 local MAX_TEMP = 1000
@@ -11,14 +11,15 @@ local reactor = peripheral.find("fissionReactorLogicAdapter")
 local matrix = peripheral.find("inductionPort")
 local modem = peripheral.find("modem") or error("No Modem Found")
 
--- === 1. THE ULTIMATE BUG SLAYER ===
--- This function is specifically designed to kill the "Arithmetic on Table" error
-local function safeVal(val)
-    if not val then return 0 end
+-- === 1. THE DEEP SCAN BUG-SLAYER ===
+-- This function extracts the number NO MATTER WHAT Mekanism sends
+local function getNum(val)
+    if val == nil then return 0 end
+    if type(val) == "number" then return val end
     if type(val) == "table" then
-        return val.amount or 0 -- Extract amount from Mekanism gas/liquid table
+        return tonumber(val.amount) or 0 -- Pulls the .amount from the table
     end
-    return tonumber(val) or 0
+    return 0
 end
 
 -- Persisted Scram Counter
@@ -66,42 +67,45 @@ end
 vaultStartup()
 
 while true do
-    -- Force numeric values for everything
+    -- Force everything to numbers immediately
     local status = reactor.getStatus()
-    local tempC = math.floor((reactor.getTemperature() or 273.15) - 273.15)
-    local dmg = reactor.getDamagePercent() or 0
-    local burn = reactor.getBurnRate() or 0
+    local tempC  = math.floor(getNum(reactor.getTemperature()) - 273.15)
+    local dmg    = getNum(reactor.getDamagePercent())
+    local burn   = getNum(reactor.getBurnRate())
     
-    -- Using the Bug-Slayer wrapper on ALL reactor calls
-    local fuel = safeVal(reactor.getFuel())
-    local fuelMax = safeVal(reactor.getFuelCapacity()) or 1
-    local waste = safeVal(reactor.getWaste())
-    local wasteMax = safeVal(reactor.getWasteCapacity()) or 1
-    local coolant = safeVal(reactor.getCoolant())
-    local coolantMax = safeVal(reactor.getCoolantCapacity()) or 1
-    local steam = safeVal(reactor.getSteam() or reactor.getFluidStored())
-    local steamMax = safeVal(reactor.getSteamCapacity() or reactor.getFluidCapacity()) or 1
+    -- Resource Gathering (Using getNum on everything)
+    local fuel       = getNum(reactor.getFuel())
+    local fuelMax    = getNum(reactor.getFuelCapacity())
+    local waste      = getNum(reactor.getWaste())
+    local wasteMax   = getNum(reactor.getWasteCapacity())
+    local coolant    = getNum(reactor.getCoolant())
+    local coolantMax = getNum(reactor.getCoolantCapacity())
+    local steam      = getNum(reactor.getSteam())
+    local steamMax   = getNum(reactor.getSteamCapacity())
 
     -- Grid Stats
-    local energyPct = math.floor(((matrix.getEnergy() or 0) / (matrix.getMaxEnergy() or 1)) * 100)
-    local netFlow = (matrix.getLastInput() or 0) - (matrix.getLastOutput() or 0)
+    local energy    = getNum(matrix.getEnergy())
+    local energyMax = getNum(matrix.getMaxEnergy())
+    local energyPct = (energyMax > 0) and math.floor((energy / energyMax) * 100) or 0
+    local netFlow   = getNum(matrix.getLastInput()) - getNum(matrix.getLastOutput())
 
     -- Failsafes
-    if status and (tempC > MAX_TEMP or dmg > 0 or energyPct > 98 or (waste/wasteMax) > 0.9) then
+    local wastePct = (wasteMax > 0) and (waste / wasteMax) or 0
+    if status and (tempC > MAX_TEMP or dmg > 0 or energyPct > 98 or wastePct > 0.9) then
         reactor.scram()
         incrementScram()
         error("SCRAM TRIGGERED: SAFETY LIMITS EXCEEDED")
     end
 
-    -- Full-Screen UI
+    -- UI Rendering
     term.clear()
     term.setCursorPos(1,1)
     term.setTextColor(colors.blue)
-    term.write("== [ AEGIS VAULT v9.0 ] ==")
+    term.write("== [ AEGIS VAULT v9.5 ] ==")
     
     term.setCursorPos(22, 1)
     term.setTextColor(colors.red)
-    term.write("BLOWING UP STOPPED: " .. getScramCount())
+    term.write("MELTDOWNS STOPPED: " .. getScramCount())
 
     term.setCursorPos(1, 3)
     term.setTextColor(colors.white)
@@ -111,14 +115,14 @@ while true do
     print("DAMAGE:  " .. dmg .. " %")
 
     term.setTextColor(colors.gray)
-    print("\n--- CHEMICAL BUFFER LEVELS ---")
+    print("\n--- CORE DIAGNOSTICS ---")
     term.setTextColor(colors.white)
-    print("FUEL:    " .. math.floor((fuel/fuelMax)*100) .. "%")
-    print("WASTE:   " .. math.floor((waste/wasteMax)*100) .. "%")
-    print("COOLANT: " .. math.floor((coolant/coolantMax)*100) .. "%")
+    print("FUEL:    " .. ((fuelMax > 0) and math.floor((fuel/fuelMax)*100) or 0) .. "%")
+    print("WASTE:   " .. math.floor(wastePct * 100) .. "%")
+    print("COOLANT: " .. ((coolantMax > 0) and math.floor((coolant/coolantMax)*100) or 0) .. "%")
 
     term.setTextColor(colors.gray)
-    print("\n--- GRID TELEMETRY ---")
+    print("\n--- GRID DYNAMICS ---")
     term.setTextColor(colors.yellow)
     print("MATRIX:  " .. energyPct .. " %")
     term.setTextColor(colors.white)
