@@ -1,19 +1,13 @@
--- AEGIS REACTOR SHIELD v11.9 (ATM10 FIXED)
+-- AEGIS REACTOR SHIELD v12.0 (STABLE)
 local GITHUB_URL = "https://raw.githubusercontent.com/caecitas-glitch/mein-campf-reactor/refs/heads/main/startup.lua"
-local REFRESH = 0.5
 
--- Peripherals
-local reactor = peripheral.find("fissionReactorLogicAdapter")
-local matrix = peripheral.find("inductionPort")
-
--- 1. Helper (Mekanism ATM10 uses tables for resources)
+-- === 1. DEFINE FUNCTIONS FIRST ===
 local function safe(val)
     if not val then return 0 end
     if type(val) == "table" then return tonumber(val.amount) or 0 end
     return tonumber(val) or 0
 end
 
--- 2. Auto-Updater
 local function autoUpdate()
     print("Checking GitHub...")
     local ok, response = pcall(http.get, GITHUB_URL)
@@ -33,7 +27,6 @@ local function autoUpdate()
     end
 end
 
--- 3. Startup Animation (Must be defined BEFORE calling it)
 local function vaultStartup()
     term.clear()
     term.setCursorPos(1,1)
@@ -42,43 +35,50 @@ local function vaultStartup()
     sleep(1)
 end
 
--- === MAIN EXECUTION ===
+-- === 2. INITIALIZE PERIPHERALS ===
+local reactor = peripheral.find("fissionReactorLogicAdapter")
+local matrix = peripheral.find("inductionPort")
+
+-- === 3. EXECUTION BEGINS HERE ===
 autoUpdate()
 vaultStartup()
 
 while true do
     if not reactor then
         term.clear()
-        print("Error: Reactor not found!")
-        break
+        term.setTextColor(colors.red)
+        print("CRITICAL ERROR: Reactor Logic Adapter not found!")
+        print("Check cables and modem status.")
+        sleep(5)
+        os.reboot()
     end
 
-    -- ATM10 Fix: Fetch full tables directly
+    -- ATM10 Method calls
     local fuelT  = reactor.getFuel() or {amount=0, max=1}
     local steamT = reactor.getSteam() or {amount=0, max=1}
     local wasteT = reactor.getWaste() or {amount=0, max=1}
     
     local tempC = math.floor(safe(reactor.getTemperature()) - 273.15)
-    local energyVal = matrix and safe(matrix.getEnergy()) or 0
-    local energyMax = matrix and safe(matrix.getMaxEnergy()) or 1
-    local energyPct = energyVal / energyMax
+    local energyPct = 0
+    if matrix then
+        energyPct = safe(matrix.getEnergy()) / (safe(matrix.getMaxEnergy()) or 1)
+    end
 
     -- UI Rendering
     term.clear()
     term.setCursorPos(1,1)
     term.setTextColor(colors.blue)
-    print("== AEGIS CORE v11.9 ==")
+    print("== AEGIS CORE v12.0 ==")
     term.setTextColor(colors.white)
     print("STATUS: " .. (reactor.getStatus() and "ACTIVE" or "IDLE"))
     print("TEMP:   " .. tempC .. " C")
     print("STEAM:  " .. math.floor((steamT.amount/steamT.max)*100) .. "%")
-    print("WASTE:  " .. math.floor((wasteT.amount/wasteT.max)*100) .. "%")
     print("MATRIX: " .. math.floor(energyPct * 100) .. "%")
 
-    -- Safety SCRAM
-    if tempC > 1000 or (wasteT.amount / wasteT.max) > 0.9 or energyPct > 0.98 then
+    -- Failsafes
+    if tempC > 1000 or (wasteT.amount / wasteT.max) > 0.9 then
         reactor.scram()
     end
 
-    sleep(REFRESH)
+    sleep(0.5)
 end
