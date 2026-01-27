@@ -1,49 +1,73 @@
--- THE BRAIN: Manages AI, Monitor, and Wireless PDA
-rednet.open("right") -- SET THIS to the side with your Wireless Modem
 local monitor = peripheral.find("monitor")
+if not monitor then error("No monitor found! Check your wired connection.") end
 
-if monitor then
-    monitor.setTextScale(0.5)
-    monitor.clear()
-    monitor.setCursorPos(1,1)
-    monitor.write("Jarvis Neural Link Online...")
-end
+monitor.setTextScale(0.5)
+local w, h = monitor.getSize()
+local currentInput = ""
+local aiResponse = "Waiting for input..."
 
--- This helper function wraps text so it doesn't break your monitor
-function display(text)
-    if not monitor then print(text) return end
+-- Define Keyboard Layout
+local layout = {
+    {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"},
+    {"A", "S", "D", "F", "G", "H", "J", "K", "L"},
+    {"Z", "X", "C", "V", "B", "N", "M", "BS", "ENT"}
+}
+
+function drawUI()
     monitor.clear()
+    -- Draw AI Response Area (Top)
     monitor.setCursorPos(1,1)
-    local w, h = monitor.getSize()
-    local x, y = 1, 1
-    for word in text:gmatch("%S+") do
-        if x + #word > w then x = 1 y = y + 1 end
-        if y <= h then
-            monitor.setCursorPos(x, y)
-            monitor.write(word .. " ")
-            x = x + #word + 1
+    monitor.setTextColor(colors.cyan)
+    monitor.write("Jarvis: " .. aiResponse:sub(1, w * 5)) -- Basic wrap/cut
+
+    -- Draw Current Input Line
+    monitor.setCursorPos(1, h - 5)
+    monitor.setTextColor(colors.yellow)
+    monitor.write("> " .. currentInput .. "_")
+
+    -- Draw Keyboard
+    monitor.setTextColor(colors.white)
+    for rowIdx, row in ipairs(layout) do
+        for colIdx, key in ipairs(row) do
+            monitor.setCursorPos(colIdx * 3, h - 4 + rowIdx)
+            monitor.write("[" .. key .. "]")
         end
     end
 end
 
--- Your existing AI function (Ollama)
-function askAI(question)
-    local payload = { model = "llama3", prompt = question, stream = false }
-    local response = http.post("http://127.0.0.1:11434/api/generate", textutils.serialiseJSON(payload))
-    if response then
-        local data = textutils.unserialiseJSON(response.readAll())
-        response.close()
+function askAI(prompt)
+    local payload = { model = "llama3", prompt = prompt, stream = false }
+    local res = http.post("http://127.0.0.1:11434/api/generate", textutils.serialiseJSON(payload))
+    if res then
+        local data = textutils.unserialiseJSON(res.readAll())
+        res.close()
         return data.response
     end
-    return "Error: Brain offline."
+    return "Error: Local AI not reached."
 end
 
-print("Brain Online. Waiting for PDA signal...")
+-- Start
+drawUI()
 
 while true do
-    local id, message = rednet.receive()
-    print("PDA #" .. id .. " sent: " .. message)
+    local event, side, x, y = os.pullEvent("monitor_touch")
     
-    local answer = askAI(message)
-    display(answer) -- This sends it to the monitor!
+    -- Check which key was hit (simplistic coordinate mapping)
+    local row = y - (h - 4)
+    local col = math.floor(x / 3)
+    
+    if layout[row] and layout[row][col] then
+        local key = layout[row][col]
+        if key == "ENT" then
+            aiResponse = "Thinking..."
+            drawUI()
+            aiResponse = askAI(currentInput)
+            currentInput = ""
+        elseif key == "BS" then
+            currentInput = currentInput:sub(1, -2)
+        else
+            currentInput = currentInput .. key
+        end
+    end
+    drawUI()
 end
