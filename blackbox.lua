@@ -1,4 +1,4 @@
--- SETTINGS & PERIPHERALS
+-- SETTINGS & PERIPHERALSs
 local kbMon = peripheral.wrap("monitor_3")
 local dispMon = peripheral.wrap("monitor_5")
 local reactor = peripheral.find("fissionReactorLogicAdapter")
@@ -171,3 +171,4 @@ while true do
         end
     end
 end
+
