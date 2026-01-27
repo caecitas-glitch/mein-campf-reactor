@@ -1,12 +1,12 @@
--- PROMETHEUS: ETERNAL FIRE v11.0
--- "God of Fire" Edition
--- Features: 60-Second Trends, Full Matrix Analytics, Crash Report
+-- TITAN-X: DEUS EX MACHINA (v11.0)
+-- "The God from the Machine"
+-- Features: Celsius Mode, 60s Trends, Full Analytics
 
 -- ================= CONFIGURATION =================
-local SAFE_TEMP = 1200         
-local MAX_WASTE = 0.90         
-local MIN_COOLANT = 0.15       
-local REFRESH_RATE = 1.0 
+local SAFE_TEMP_K = 1200       -- Internal Safety Limit (Kelvin)
+local MAX_WASTE = 0.90         -- 90% Waste Limit
+local MIN_COOLANT = 0.15       -- 15% Coolant Limit
+local REFRESH_RATE = 1.0       -- 1.0s for stable trends
 
 -- ================= PERIPHERALS =================
 local reactor = peripheral.find("fissionReactorLogicAdapter")
@@ -20,7 +20,7 @@ if not mon then error("No Monitor found!") end
 mon.setTextScale(0.5)
 local w, h = mon.getSize()
 
--- ================= STATE & TRENDS =================
+-- ================= STATE & HISTORY =================
 local scramTriggered = false
 local scramReason = "None"
 local targetBurn = 50.0 
@@ -28,8 +28,12 @@ local actionLog = {}
 
 -- Trend History
 local history = {
-    temp = {}, burn = {}, heat = {},
-    flow = {}, prod = {}, energy = {}
+    temp = {},
+    burn = {},
+    heat = {},
+    flow = {},
+    prod = {},
+    energy = {}
 }
 
 -- Sync burn rate safely
@@ -42,6 +46,10 @@ local function getVal(func)
     local success, result = pcall(func)
     if success and result then return tonumber(result) or 0 end
     return 0 
+end
+
+local function toCelsius(k)
+    return k - 273.15
 end
 
 local function formatNum(num)
@@ -125,8 +133,6 @@ local function drawBar(x, y, width, percent, color, label)
     mon.setBackgroundColor(colors.black)
 end
 
--- ================= BUTTONS =================
-local buttons = {}
 local function drawButton(name, x, y, width, height, color, label, textColor)
     drawBox(x, y, width, height, color)
     mon.setTextColor(textColor or colors.black)
@@ -134,14 +140,18 @@ local function drawButton(name, x, y, width, height, color, label, textColor)
     local ty = y + math.floor(height/2)
     mon.setCursorPos(tx, ty)
     mon.write(label)
-    buttons[name] = {x=x, y=y, w=width, h=height}
+    return {name=name, x=x, y=y, w=width, h=height}
 end
 
 -- ================= MAIN UI =================
+local buttons = {} -- Reset buttons each frame
+
 local function drawGUI()
+    buttons = {} -- Clear button registry
+    
     -- 1. Get Data
     local r_stat = getVal(reactor.getStatus)
-    local r_temp = getVal(reactor.getTemperature)
+    local r_tempK = getVal(reactor.getTemperature)
     local r_cool = getVal(reactor.getCoolantFilledPercentage)
     local r_wast = getVal(reactor.getWasteFilledPercentage)
     local r_burn = getVal(reactor.getBurnRate)
@@ -161,20 +171,23 @@ local function drawGUI()
     end
     if m_max <= 0 then m_max = 1 end
 
+    -- Convert to Celsius for display
+    local r_tempC = toCelsius(r_tempK)
+
     -- 2. Update Trends
-    updateTrend("temp", r_temp)
+    updateTrend("temp", r_tempC) -- Trend in C
     updateTrend("burn", r_burn)
     updateTrend("heat", r_heat)
     updateTrend("flow", t_flow)
     updateTrend("prod", t_prod)
     updateTrend("energy", m_eng)
 
-    -- 3. Safety Logic
+    -- 3. Safety Logic (Check in Kelvin for safety constant)
     local safeReason = nil
-    if r_dmg > 0 then safeReason = "DAMAGE DETECTED" end
-    if r_temp >= SAFE_TEMP then safeReason = "OVERHEAT" end
-    if r_wast >= MAX_WASTE then safeReason = "WASTE FULL" end
-    if r_cool < MIN_COOLANT then safeReason = "LOSS OF COOLANT" end
+    if r_dmg > 0 then safeReason = "HULL DAMAGE DETECTED" end
+    if r_tempK >= SAFE_TEMP_K then safeReason = "CORE MELTDOWN IMMINENT" end
+    if r_wast >= MAX_WASTE then safeReason = "WASTE CONTAINMENT FULL" end
+    if r_cool < MIN_COOLANT then safeReason = "COOLANT LOSS DETECTED" end
 
     if safeReason then
         if reactor.getStatus() then pcall(reactor.scram) end
@@ -189,31 +202,30 @@ local function drawGUI()
     if scramTriggered then
         -- CRASH MODE
         drawBox(1, 1, w, 3, colors.red)
-        centerText(2, "!!! CORE FAILURE !!!", colors.yellow, colors.red)
-        writeText(2, 5, "CAUSE: " .. scramReason, colors.red)
-        writeText(2, 7, "DAMAGE: " .. r_dmg .. "%", colors.orange)
-        writeText(2, 9, "EVENT LOG:", colors.lightGray)
+        centerText(2, "!!! DEUS EX MACHINA FAILED !!!", colors.yellow, colors.red)
+        writeText(2, 5, "FAILURE CAUSE: " .. scramReason, colors.red)
+        writeText(2, 7, "INTEGRITY: " .. (100 - r_dmg) .. "%", colors.orange)
+        writeText(2, 9, "BLACK BOX LOGS:", colors.lightGray)
         for i, msg in ipairs(actionLog) do
             if i <= 8 then writeText(2, 9+i, msg, colors.white) end
         end
     else
         -- DASHBOARD MODE
-        drawBox(1, 1, w, 3, colors.orange)
-        centerText(2, "PROMETHEUS :: ETERNAL FIRE", colors.black, colors.orange)
+        drawBox(1, 1, w, 3, colors.blue)
+        centerText(2, "TITAN-X: DEUS EX MACHINA", colors.white, colors.blue)
 
         -- === COLUMN 1: REACTOR ===
-        writeText(2, 5, "REACTOR CORE", colors.orange)
+        writeText(2, 5, "CORE STATUS", colors.cyan)
         
         -- Status
-        writeText(2, 6, "Status:", colors.lightGray)
-        if r_stat then writeText(10, 6, "ACTIVE", colors.lime)
-        else writeText(10, 6, "IDLE", colors.gray) end
+        if r_stat then writeText(14, 5, "ONLINE", colors.lime)
+        else writeText(14, 5, "OFFLINE", colors.gray) end
         
-        -- Temp + Trend
+        -- Temp (Celsius)
         local t_trend = getTrend("temp")
-        local t_col = (r_temp > 1000) and colors.red or colors.white
-        writeText(2, 7, "Temp:   "..math.floor(r_temp).." K", t_col)
-        writeText(20, 7, formatTrend(t_trend, "K"), (t_trend > 0 and colors.red or colors.green))
+        local t_col = (r_tempK > 1000) and colors.red or colors.white
+        writeText(2, 7, "Temp:   "..math.floor(r_tempC).." \127C", t_col) -- \127 is degree symbol
+        writeText(20, 7, formatTrend(t_trend, "\127"), (t_trend > 0 and colors.orange or colors.green))
         
         -- Heating Rate
         writeText(2, 8, "Heat:   "..formatNum(r_heat), colors.white)
@@ -224,10 +236,10 @@ local function drawGUI()
         writeText(20, 9, formatTrend(getTrend("burn"), ""), colors.gray)
         
         -- Damage
-        writeText(2, 10, "Integrity: "..(100-r_dmg).."%", (r_dmg > 0 and colors.red or colors.green))
+        writeText(2, 10, "Damage: "..r_dmg.."%", (r_dmg > 0 and colors.red or colors.green))
 
         -- Bars
-        local coolC = (r_cool < 0.2) and colors.red or colors.cyan
+        local coolC = (r_cool < 0.2) and colors.red or colors.lime
         drawBar(2, 12, 22, r_cool, coolC, "Coolant: "..math.floor(r_cool*100).."%")
         
         local wasteC = (r_wast > 0.8) and colors.orange or colors.magenta
@@ -235,7 +247,7 @@ local function drawGUI()
 
         -- === COLUMN 2: POWER ===
         local col2 = 32
-        writeText(col2, 5, "GRID & MATRIX", colors.yellow)
+        writeText(col2, 5, "ENERGY GRID", colors.yellow)
         
         -- Turbine Stats
         writeText(col2, 6, "Flow:   "..formatNum(t_flow).." mB/t", colors.white)
@@ -255,9 +267,9 @@ local function drawGUI()
         writeText(col2, 13, "Cap:    "..formatNum(m_max).." FE", colors.gray)
         
         -- Calculated Power Change
-        writeText(col2, 14, "Net Change:", colors.lightGray)
+        writeText(col2, 14, "Delta:  ", colors.lightGray)
         local changeCol = (m_trend >= 0) and colors.lime or colors.red
-        writeText(col2+12, 14, formatTrend(m_trend, " /m"), changeCol)
+        writeText(col2+8, 14, formatNum(m_trend).." /m", changeCol)
     end
 
     -- CONTROLS
@@ -265,34 +277,38 @@ local function drawGUI()
     if not scramTriggered then
         writeText(2, bY, "TARGET: " .. targetBurn .. " mB/t   ", colors.cyan)
     else
-        writeText(2, bY, "SYSTEM HALTED - RESTART REQUIRED", colors.red)
+        writeText(2, bY, "FATAL ERROR - MANUAL RESET REQUIRED", colors.red)
     end
     
-    drawButton("m10", 2, bY+1, 5, 3, colors.gray, "-10", colors.white)
-    drawButton("p10", 8, bY+1, 5, 3, colors.gray, "+10", colors.white)
-    drawButton("start", 14, bY+1, 8, 3, colors.green, "IGNITE", colors.black)
-    drawButton("stop",  23, bY+1, 8, 3, colors.red,   "SCRAM",  colors.white)
+    local b1 = drawButton("m10", 2, bY+1, 5, 3, colors.gray, "-10", colors.white)
+    local b2 = drawButton("p10", 8, bY+1, 5, 3, colors.gray, "+10", colors.white)
+    local b3 = drawButton("start", 14, bY+1, 8, 3, colors.green, "START", colors.black)
+    local b4 = drawButton("stop",  23, bY+1, 8, 3, colors.red,   "STOP",  colors.white)
+    
+    -- Store buttons for touch handler
+    table.insert(buttons, b1); table.insert(buttons, b2)
+    table.insert(buttons, b3); table.insert(buttons, b4)
 end
 
 -- ================= INPUT =================
 local function handleTouch(x, y)
-    for name, b in pairs(buttons) do
+    for _, b in ipairs(buttons) do
         if x >= b.x and x < b.x + b.w and y >= b.y and y < b.y + b.h then
-            if name == "start" then
+            if b.name == "start" then
                 if not scramTriggered then
-                    if not reactor.getStatus() then reactor.activate(); addLog("Ignition Seq") end
+                    if not reactor.getStatus() then reactor.activate(); addLog("System Engaged") end
                     reactor.setBurnRate(targetBurn)
                 else addLog("ERR: Clear Alarm") end
-            elseif name == "stop" then
-                if reactor.getStatus() then reactor.scram(); addLog("Manual SCRAM") end
+            elseif b.name == "stop" then
+                if reactor.getStatus() then reactor.scram(); addLog("Manual Override") end
                 if scramTriggered then scramTriggered = false; scramReason = "None"; mon.clear() end
-            elseif name == "p10" then 
-                targetBurn = targetBurn + 10; addLog("Rate +10")
-            elseif name == "m10" then 
-                targetBurn = targetBurn - 10; addLog("Rate -10")
+            elseif b.name == "p10" then 
+                targetBurn = targetBurn + 10; addLog("Burn Rate +10")
+            elseif b.name == "m10" then 
+                targetBurn = targetBurn - 10; addLog("Burn Rate -10")
             end
             if targetBurn < 0.1 then targetBurn = 0.1 end
-            if name ~= "stop" and name ~= "start" and not scramTriggered then
+            if b.name ~= "stop" and b.name ~= "start" and not scramTriggered then
                 reactor.setBurnRate(targetBurn)
             end
             return
@@ -303,8 +319,17 @@ end
 -- ================= RUN =================
 mon.setBackgroundColor(colors.black)
 mon.clear()
-centerText(h/2, "PROMETHEUS ONLINE", colors.orange, colors.black)
+
+-- Epic Startup
+mon.setTextScale(1)
+centerText(h/2, "AWAKENING", colors.red, colors.black)
 sleep(1)
+centerText(h/2, "THE MACHINE GOD...", colors.red, colors.black)
+sleep(1)
+mon.setTextScale(0.5)
+w, h = mon.getSize() -- update dimensions
+mon.clear()
+
 parallel.waitForAny(
     function() while true do drawGUI(); sleep(REFRESH_RATE) end end,
     function() while true do local _,_,x,y = os.pullEvent("monitor_touch"); handleTouch(x,y) end end
