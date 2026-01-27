@@ -1,20 +1,20 @@
--- SETTINGS & PERIPHERALSs
+-- SETTINGS & PERIPHERALS
 local kbMon = peripheral.wrap("monitor_3")
 local dispMon = peripheral.wrap("monitor_5")
 local reactor = peripheral.find("fissionReactorLogicAdapter")
-local turbine = peripheral.wrap("turbineValve_0") -- Specific ID for your valve
+local turbine = peripheral.wrap("turbineValve_0")
 
 if not kbMon or not dispMon or not reactor or not turbine then 
-    error("Hardware missing! Check Monitor 3, Monitor 5, Reactor, and Turbine Valve.") 
+    error("Hardware missing! Check Monitor 3, 5, Reactor, and Turbine.") 
 end
 
 kbMon.setTextScale(1)
 dispMon.setTextScale(1)
 
 local currentInput = ""
-local aiResponse = "Jarvis: Fission Reactor and Industrial Turbine links established."
+local aiResponse = "Jarvis: Critical systems link stable. Core monitoring active."
 
--- KEYBOARD LAYOUT
+-- Professional Edge-to-Edge Layout
 local layout = {
     {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"},
     {"A", "S", "D", "F", "G", "H", "J", "K", "L"},
@@ -27,7 +27,6 @@ function processCommands(response)
     local text = response:upper()
     local action = ""
     
-    -- Reactor Commands
     if text:find("SCRAM") or text:find("SHUTDOWN") then
         reactor.scram()
         action = "\n[SYSTEM: EMERGENCY SCRAM INITIATED]"
@@ -41,16 +40,6 @@ function processCommands(response)
             action = "\n[SYSTEM: BURN RATE SET TO " .. rate .. "]"
         end
     end
-
-    -- Turbine Commands
-    if text:find("DUMP STEAM") then
-        turbine.setDumpMode("DUMPING")
-        action = action .. "\n[SYSTEM: TURBINE DUMPING STEAM]"
-    elseif text:find("IDLE TURBINE") then
-        turbine.setDumpMode("IDLE")
-        action = action .. "\n[SYSTEM: TURBINE IDLING]"
-    end
-    
     return action
 end
 
@@ -78,11 +67,13 @@ function drawKeyboard()
     kbMon.write("CMD> " .. currentInput .. "_")
 
     for r, row in ipairs(layout) do
-        local rowBtnW = math.floor(kw / #row)
+        local numKeys = #row
+        local btnWidth = math.floor(kw / numKeys)
+        local yPos = r + 4
+
         for c, key in ipairs(row) do
-            local x = (c - 1) * rowBtnW + 1
-            local y = r + 4
-            kbMon.setCursorPos(x, y)
+            local xPos = (c - 1) * btnWidth + 1
+            kbMon.setCursorPos(xPos, yPos)
             kbMon.setTextColor(colors.gray)
             kbMon.write(".") 
             
@@ -90,27 +81,32 @@ function drawKeyboard()
             elseif key == "CLEAR" or key == "BS" then kbMon.setTextColor(colors.red)
             else kbMon.setTextColor(colors.white) end
             
-            local offset = math.floor((rowBtnW - #key) / 2)
-            kbMon.setCursorPos(x + offset, y)
+            local textOffset = math.floor((btnWidth - #key) / 2)
+            kbMon.setCursorPos(xPos + textOffset, yPos)
             kbMon.write(key)
         end
     end
 end
 
--- AI CONNECTION WITH INTEGRATED POWER STATS
+-- AI CONNECTION (FIXED FOR TABLE ARGUMENTS)
 function askAI(prompt)
-    -- Jarvis reads Reactor AND Turbine stats
+    -- Use 'tonumber' or index the table to avoid the "got table" error
+    local rTemp = reactor.getTemperature() or 0
+    local rDmg = reactor.getDamagePercent() or 0
+    
+    -- Turbine calls often return tables; we extract the first value
+    local tEnergyRaw = turbine.getEnergy()
+    local tEnergy = type(tEnergyRaw) == "table" and tEnergyRaw[1] or tEnergyRaw or 0
+    
+    local tSteamRaw = turbine.getSteam()
+    local tSteam = type(tSteamRaw) == "table" and tSteamRaw[1] or tSteamRaw or 0
+
     local stats = string.format(
-        "CORE: Temp %.1fK, Damage %.1f%%. TURBINE: Energy %d RF, Steam %d/%d. ",
-        reactor.getTemperature(),
-        reactor.getDamagePercent(),
-        turbine.getEnergy(),
-        turbine.getSteam(),
-        turbine.getSteamCapacity()
+        "CORE: Temp %.1fK, Damage %.1f%%. TURBINE: Energy %s, Steam %s. ",
+        rTemp, rDmg, tostring(tEnergy), tostring(tSteam)
     )
     
-    local systemMsg = "Context: You are Jarvis. Manage the Reactor and Turbine. " ..
-                      "To stop core: 'SCRAM'. To vent turbine: 'DUMP STEAM'. "
+    local systemMsg = "Context: You are Jarvis. Manage the Reactor and Turbine. To stop core: 'SCRAM'. To vent turbine: 'DUMP STEAM'."
                       
     local payload = {
         model = "llama3",
@@ -137,13 +133,15 @@ while true do
     if side == "monitor_3" then
         local rIdx = y - 4
         if layout[rIdx] then
-            local rowBtnW = math.floor(kbMon.getSize() / #layout[rIdx])
-            local cIdx = math.floor((x - 1) / rowBtnW) + 1
+            local kw, kh = kbMon.getSize()
+            local numKeys = #layout[rIdx]
+            local btnWidth = math.floor(kw / numKeys)
+            local cIdx = math.floor((x - 1) / btnWidth) + 1
             local key = layout[rIdx][cIdx]
             
             if key then
                 if key == "ENTER" then
-                    displayWrap("Jarvis: Synchronizing Power Systems...")
+                    displayWrap("Jarvis: Accessing core data...")
                     local answer = askAI(currentInput)
                     local note = processCommands(answer)
                     aiResponse = answer .. note
