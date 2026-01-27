@@ -1,20 +1,33 @@
--- JARVIS v7.0 - Reactor Control (Safety Overrides Enabled)a
+-- JARVIS v8.0 - FULL AUTONOMY
+-- Run: wget https://raw.githubusercontent.com/caecitas-glitch/mein-campf-reactor/refs/heads/main/blackbox.lua jarvis
+
+-- --- PERIPHERALS ---
 local kbMon = peripheral.wrap("monitor_3")
 local dispMon = peripheral.wrap("monitor_5")
 local reactor = peripheral.find("fissionReactorLogicAdapter")
 local turbine = peripheral.wrap("turbineValve_0")
+local matrix = peripheral.find("inductionPort") -- Connects to your battery
+local chatBox = peripheral.find("chatBox")      -- Optional: For real chat messages
 
 if not kbMon or not dispMon or not reactor or not turbine then 
-    error("Hardware missing! Check monitors and reactor connections.") 
+    error("Critical Hardware Missing! Check connections.") 
 end
 
 kbMon.setTextScale(1)
 dispMon.setTextScale(1)
 
-local currentInput = ""
-local aiResponse = "Jarvis: Protocol active. Reactor temperature monitoring engaged."
+-- --- CONFIGURATION ---
+local TARGET_BURN_RATE = 10.0 -- Default rate when active. Change this via keyboard!
+local IDLE_BURN_RATE = 0.1    -- Rate when battery is full
+local MAX_TEMP = 1000         -- Kelvin safety limit
+local FULL_PCT = 0.95         -- 95% = Slow down
+local LOW_PCT = 0.80          -- 80% = Speed up back to target
 
--- LAYOUT
+local currentState = "INIT"
+local currentInput = ""
+local aiResponse = "Jarvis: Auto-Pilot Engaged. Monitoring Grid Power."
+
+-- --- LAYOUT ---
 local layout = {
     {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"},
     {"A", "S", "D", "F", "G", "H", "J", "K", "L"},
@@ -22,67 +35,67 @@ local layout = {
     {"SPACE", "ENTER", "CLEAR"}
 }
 
--- HELPER: Fixes "got table" crashes from Mekanism
+-- --- HELPER FUNCTIONS ---
 function getSafeNum(val)
     if type(val) == "number" then return val end
-    if type(val) == "table" then 
-        return val[1] or val.amount or 0 
-    end
+    if type(val) == "table" then return val[1] or val.amount or 0 end
     return 0
 end
 
--- CONTROL LOGIC (With OVERRIDE and COOLING)
-function processCommands(response)
-    local text = response:upper()
-    local action = ""
-    local temp = getSafeNum(reactor.getTemperature())
-    
-    -- SAFETY CHECK: Only SCRAM if active
-    if text:find("SCRAM") or text:find("SHUTDOWN") then
-        if reactor.getStatus() then 
-            reactor.scram()
-            action = "\n[SYSTEM: SCRAM EXECUTED]"
-        else
-            action = "\n[SYSTEM: ALREADY STOPPED]"
-        end
-
-    -- OVERRIDE: Bypasses temperature checks
-    elseif text:find("OVERRIDE") then
-        reactor.activate()
-        action = "\n[SYSTEM: SAFETY OVERRIDDEN - REACTOR STARTED]"
-
-    -- START: Includes High Temp Block
-    elseif text:find("ACTIVATE") or text:find("START") then
-        if temp > 1000 then -- Safety Threshold
-            action = "\n[SYSTEM: START BLOCKED - HIGH TEMP ("..math.floor(temp).."K). SAY 'OVERRIDE' TO FORCE.]"
-        elseif not reactor.getStatus() then
-            reactor.activate()
-            action = "\n[SYSTEM: REACTOR ACTIVATED]"
-        else
-            action = "\n[SYSTEM: ALREADY ACTIVE]"
-        end
-        
-    -- COOLING MODES
-    elseif text:find("VENT") or text:find("DUMP STEAM") then
-        turbine.setDumpMode("DUMPING")
-        action = "\n[SYSTEM: EMERGENCY VENTING ACTIVE]"
-    
-    elseif text:find("NORMAL OPS") or text:find("IDLE") then
-        turbine.setDumpMode("IDLE")
-        action = "\n[SYSTEM: TURBINE RESET TO NORMAL]"
-
-    -- BURN RATE
-    elseif text:find("BURN RATE") then
-        local rate = text:match("SET TO (%d+%.?%d*)")
-        if rate then
-            reactor.setBurnRate(tonumber(rate))
-            action = "\n[SYSTEM: BURN RATE SET TO " .. rate .. "]"
-        end
+function sendChat(msg)
+    if chatBox then 
+        chatBox.sendMessage(msg, "Jarvis") 
+    else
+        -- Fallback: Just print to the screen log if no ChatBox exists
+        aiResponse = "CHAT: " .. msg
     end
-    return action
 end
 
--- UI DRAWING
+-- --- AUTONOMOUS LOGIC LOOP ---
+function runAutoPilot()
+    local temp = getSafeNum(reactor.getTemperature())
+    local energy = 0
+    local maxEnergy = 1
+    
+    if matrix then
+        energy = getSafeNum(matrix.getEnergy())
+        maxEnergy = getSafeNum(matrix.getMaxEnergy())
+    end
+    
+    local pct = energy / maxEnergy
+    local statusUpdate = ""
+
+    -- 1. CRITICAL SAFETY CHECK
+    if temp > MAX_TEMP then
+        if reactor.getStatus() then
+            reactor.scram()
+            sendChat("EMERGENCY: Core Temp Critical! SCRAM Activated!")
+            statusUpdate = " [SCRAM: HIGH TEMP]"
+        end
+        return statusUpdate
+    end
+
+    -- 2. BATTERY MANAGEMENT
+    if pct >= FULL_PCT and currentState ~= "IDLE" then
+        -- Battery is Full -> Slow Down
+        reactor.setBurnRate(IDLE_BURN_RATE)
+        currentState = "IDLE"
+        sendChat("Power Grid Full ("..math.floor(pct*100).."%). Idling reactor.")
+        statusUpdate = " [GRID FULL - IDLING]"
+
+    elseif pct <= LOW_PCT and currentState ~= "ACTIVE" then
+        -- Battery Low -> Ramp Up
+        reactor.setBurnRate(TARGET_BURN_RATE)
+        reactor.activate()
+        currentState = "ACTIVE"
+        sendChat("Power Grid Low ("..math.floor(pct*100).."%). Resuming normal burn.")
+        statusUpdate = " [GRID LOW - ACTIVE]"
+    end
+
+    return statusUpdate
+end
+
+-- --- UI & INPUT HANDLING ---
 function displayWrap(text)
     dispMon.clear()
     dispMon.setCursorPos(1, 1)
@@ -104,6 +117,11 @@ function drawKeyboard()
     kbMon.setCursorPos(math.floor(kw/2 - 10), 2)
     kbMon.setTextColor(colors.yellow)
     kbMon.write("CMD> " .. currentInput .. "_")
+    
+    -- Status Line at bottom of keyboard
+    kbMon.setCursorPos(2, kh)
+    kbMon.setTextColor(colors.orange)
+    kbMon.write("TARGET: " .. TARGET_BURN_RATE .. " mB/t | STATE: " .. currentState)
 
     for r, row in ipairs(layout) do
         local numKeys = #row
@@ -127,45 +145,63 @@ function drawKeyboard()
     end
 end
 
--- AI CONNECTION
+function processUserCommands(text)
+    local upperText = text:upper()
+    if upperText:find("SET BURN") or upperText:find("SET TO") then
+        local rate = upperText:match("(%d+%.?%d*)")
+        if rate then
+            TARGET_BURN_RATE = tonumber(rate)
+            reactor.setBurnRate(TARGET_BURN_RATE)
+            return " [TARGET UPDATED: " .. rate .. "]"
+        end
+    end
+    return ""
+end
+
 function askAI(prompt)
     local rTemp = getSafeNum(reactor.getTemperature())
-    local rDmg = getSafeNum(reactor.getDamagePercent())
-    local tEnergy = getSafeNum(turbine.getEnergy())
     local tSteam = getSafeNum(turbine.getSteam())
+    local mPct = 0
+    if matrix then 
+        mPct = getSafeNum(matrix.getEnergy()) / getSafeNum(matrix.getMaxEnergy()) * 100 
+    end
 
-    -- We give the AI the temp so it knows to complain if it's hot
-    local stats = string.format(
-        "CORE: Temp %.1fK, Damage %.1f%%. TURBINE: Energy %d, Steam %d. ",
-        rTemp, rDmg, tEnergy, tSteam
-    )
-    
-    local systemMsg = "Context: You are Jarvis. Manage the Fission Reactor. " ..
-                      "If asked to start, check Temp. If >1000K, refuse unless user says 'OVERRIDE'. " ..
-                      "To vent heat: 'DUMP STEAM'. To stop: 'SCRAM'."
-                      
+    local stats = string.format("Temp:%.0fK Steam:%d Battery:%.1f%% State:%s", rTemp, tSteam, mPct, currentState)
     local payload = {
         model = "llama3",
-        prompt = stats .. "\n" .. systemMsg .. "\nUser: " .. prompt .. "\nJarvis:",
+        prompt = stats .. "\nUser: " .. prompt .. "\nJarvis:",
         stream = false
     }
-    
     local res = http.post("http://127.0.0.1:11434/api/generate", textutils.serialiseJSON(payload))
     if res then
         local data = textutils.unserialiseJSON(res.readAll())
         res.close()
         return data.response
     end
-    return "Error: Brain offline."
+    return "Offline"
 end
 
--- MAIN LOOP
+-- --- MAIN EVENT LOOP ---
 drawKeyboard()
 displayWrap(aiResponse)
+os.startTimer(5) -- Start the first check timer
 
 while true do
-    local event, side, x, y = os.pullEvent("monitor_touch")
-    if side == "monitor_3" then
+    local event, p1, p2, p3 = os.pullEvent()
+
+    -- 1. TIMER EVENT (Auto-Pilot Check)
+    if event == "timer" then
+        local status = runAutoPilot()
+        if status ~= "" then 
+            aiResponse = "AUTO: " .. status 
+            displayWrap(aiResponse)
+        end
+        drawKeyboard() -- Refresh status line
+        os.startTimer(5) -- Schedule next check in 5 seconds
+
+    -- 2. TOUCH EVENT (User Input)
+    elseif event == "monitor_touch" and p1 == "monitor_3" then
+        local x, y = p2, p3
         local rIdx = y - 4
         if layout[rIdx] then
             local kw = kbMon.getSize()
@@ -175,10 +211,13 @@ while true do
             
             if key then
                 if key == "ENTER" then
-                    displayWrap("Jarvis: Analyzing Request...")
-                    local answer = askAI(currentInput)
-                    local note = processCommands(answer)
-                    aiResponse = answer .. note
+                    local sysMsg = processUserCommands(currentInput)
+                    if sysMsg == "" then
+                        local answer = askAI(currentInput)
+                        aiResponse = "Jarvis: " .. answer
+                    else
+                        aiResponse = "SYS: " .. sysMsg
+                    end
                     displayWrap(aiResponse)
                     currentInput = ""
                 elseif key == "BS" then currentInput = currentInput:sub(1, -2)
@@ -190,4 +229,3 @@ while true do
         end
     end
 end
-
