@@ -1,12 +1,13 @@
--- TITAN-X: DEUS EX MACHINA (v11.0)
--- "The God from the Machine"
--- Features: Celsius Mode, 60s Trends, Full Analytics
+-- TITAN-X: DEUS EX MACHINA (v13.0)
+-- Update: Total FE Conversion (All Joules removed)
+-- Ratio: 2.5 Joules = 1 FE
 
 -- ================= CONFIGURATION =================
-local SAFE_TEMP_K = 1200       -- Internal Safety Limit (Kelvin)
-local MAX_WASTE = 0.90         -- 90% Waste Limit
-local MIN_COOLANT = 0.15       -- 15% Coolant Limit
-local REFRESH_RATE = 1.0       -- 1.0s for stable trends
+local SAFE_TEMP_K = 1200       -- Scram Limit (Kelvin)
+local MAX_WASTE = 0.90         -- 90% Waste
+local MIN_COOLANT = 0.15       -- 15% Coolant
+local REFRESH_RATE = 1.0       
+local J_TO_FE = 0.4            -- 1 J = 0.4 FE
 
 -- ================= PERIPHERALS =================
 local reactor = peripheral.find("fissionReactorLogicAdapter")
@@ -26,14 +27,9 @@ local scramReason = "None"
 local targetBurn = 50.0 
 local actionLog = {}
 
--- Trend History
 local history = {
-    temp = {},
-    burn = {},
-    heat = {},
-    flow = {},
-    prod = {},
-    energy = {}
+    temp = {}, burn = {}, heat = {},
+    flow = {}, prod = {}, energy = {}
 }
 
 -- Sync burn rate safely
@@ -48,8 +44,12 @@ local function getVal(func)
     return 0 
 end
 
-local function toCelsius(k)
-    return k - 273.15
+local function toCelsius(k) return k - 273.15 end
+
+-- Universal Conversion Helper
+local function toFE(joules) 
+    if not joules then return 0 end
+    return joules * J_TO_FE 
 end
 
 local function formatNum(num)
@@ -144,12 +144,12 @@ local function drawButton(name, x, y, width, height, color, label, textColor)
 end
 
 -- ================= MAIN UI =================
-local buttons = {} -- Reset buttons each frame
+local buttons = {} 
 
 local function drawGUI()
-    buttons = {} -- Clear button registry
+    buttons = {} 
     
-    -- 1. Get Data
+    -- 1. Get Data (RAW JOULES)
     local r_stat = getVal(reactor.getStatus)
     local r_tempK = getVal(reactor.getTemperature)
     local r_cool = getVal(reactor.getCoolantFilledPercentage)
@@ -158,31 +158,35 @@ local function drawGUI()
     local r_heat = getVal(reactor.getHeatingRate)
     local r_dmg  = getVal(reactor.getDamagePercent)
     
-    local t_flow, t_prod = 0, 0
+    local t_flow = 0
+    local t_prod_j = 0 -- Joules
     if turbine then 
         t_flow = getVal(turbine.getFlowRate)
-        t_prod = getVal(turbine.getProductionRate)
+        t_prod_j = getVal(turbine.getProductionRate)
     end
     
-    local m_eng, m_max = 0, 1
+    local m_eng_j, m_max_j = 0, 1 -- Joules
     if matrix then
-        m_eng = getVal(matrix.getEnergy)
-        m_max = getVal(matrix.getMaxEnergy)
+        m_eng_j = getVal(matrix.getEnergy)
+        m_max_j = getVal(matrix.getMaxEnergy)
     end
-    if m_max <= 0 then m_max = 1 end
+    if m_max_j <= 0 then m_max_j = 1 end
 
-    -- Convert to Celsius for display
+    -- 2. Convert Data to FE
     local r_tempC = toCelsius(r_tempK)
+    local t_prod  = toFE(t_prod_j) -- Converted
+    local m_eng   = toFE(m_eng_j)  -- Converted
+    local m_max   = toFE(m_max_j)  -- Converted
 
-    -- 2. Update Trends
-    updateTrend("temp", r_tempC) -- Trend in C
+    -- 3. Update Trends (Using FE Values)
+    updateTrend("temp", r_tempC) 
     updateTrend("burn", r_burn)
     updateTrend("heat", r_heat)
     updateTrend("flow", t_flow)
-    updateTrend("prod", t_prod)
-    updateTrend("energy", m_eng)
+    updateTrend("prod", t_prod) -- Storing FE trend
+    updateTrend("energy", m_eng) -- Storing FE trend
 
-    -- 3. Safety Logic (Check in Kelvin for safety constant)
+    -- 4. Safety Logic (Kelvin)
     local safeReason = nil
     if r_dmg > 0 then safeReason = "HULL DAMAGE DETECTED" end
     if r_tempK >= SAFE_TEMP_K then safeReason = "CORE MELTDOWN IMMINENT" end
@@ -196,7 +200,7 @@ local function drawGUI()
         addLog("CRITICAL: " .. safeReason)
     end
 
-    -- 4. RENDER
+    -- 5. RENDER
     mon.setBackgroundColor(colors.black)
     
     if scramTriggered then
@@ -214,24 +218,23 @@ local function drawGUI()
         drawBox(1, 1, w, 3, colors.blue)
         centerText(2, "TITAN-X: DEUS EX MACHINA", colors.white, colors.blue)
 
-        -- === COLUMN 1: REACTOR ===
+        -- LEFT: REACTOR
         writeText(2, 5, "CORE STATUS", colors.cyan)
         
-        -- Status
         if r_stat then writeText(14, 5, "ONLINE", colors.lime)
         else writeText(14, 5, "OFFLINE", colors.gray) end
         
-        -- Temp (Celsius)
+        -- Temp
         local t_trend = getTrend("temp")
         local t_col = (r_tempK > 1000) and colors.red or colors.white
-        writeText(2, 7, "Temp:   "..math.floor(r_tempC).." \127C", t_col) -- \127 is degree symbol
+        writeText(2, 7, "Temp:   "..math.floor(r_tempC).." \127C", t_col) 
         writeText(20, 7, formatTrend(t_trend, "\127"), (t_trend > 0 and colors.orange or colors.green))
         
-        -- Heating Rate
+        -- Heat
         writeText(2, 8, "Heat:   "..formatNum(r_heat), colors.white)
         writeText(20, 8, formatTrend(getTrend("heat"), ""), colors.gray)
 
-        -- Burn Rate
+        -- Burn
         writeText(2, 9, "Burn:   "..r_burn.." mB/t", colors.white)
         writeText(20, 9, formatTrend(getTrend("burn"), ""), colors.gray)
         
@@ -245,18 +248,18 @@ local function drawGUI()
         local wasteC = (r_wast > 0.8) and colors.orange or colors.magenta
         drawBar(2, 14, 22, r_wast, wasteC, "Waste: "..math.floor(r_wast*100).."%")
 
-        -- === COLUMN 2: POWER ===
+        -- RIGHT: POWER
         local col2 = 32
-        writeText(col2, 5, "ENERGY GRID", colors.yellow)
+        writeText(col2, 5, "ENERGY GRID (FE)", colors.yellow)
         
-        -- Turbine Stats
+        -- Turbine
         writeText(col2, 6, "Flow:   "..formatNum(t_flow).." mB/t", colors.white)
         writeText(col2+20, 6, formatTrend(getTrend("flow"), ""), colors.gray)
         
         writeText(col2, 7, "Prod:   "..formatNum(t_prod).." FE/t", colors.lime)
         writeText(col2+20, 7, formatTrend(getTrend("prod"), ""), colors.gray)
         
-        -- Matrix Stats
+        -- Matrix
         local m_trend = getTrend("energy")
         local m_pct = m_eng / m_max
         
@@ -266,10 +269,10 @@ local function drawGUI()
         writeText(col2, 12, "Stored: "..formatNum(m_eng).." FE", colors.white)
         writeText(col2, 13, "Cap:    "..formatNum(m_max).." FE", colors.gray)
         
-        -- Calculated Power Change
+        -- Change
         writeText(col2, 14, "Delta:  ", colors.lightGray)
         local changeCol = (m_trend >= 0) and colors.lime or colors.red
-        writeText(col2+8, 14, formatNum(m_trend).." /m", changeCol)
+        writeText(col2+8, 14, formatNum(m_trend).." FE/m", changeCol)
     end
 
     -- CONTROLS
@@ -285,7 +288,6 @@ local function drawGUI()
     local b3 = drawButton("start", 14, bY+1, 8, 3, colors.green, "START", colors.black)
     local b4 = drawButton("stop",  23, bY+1, 8, 3, colors.red,   "STOP",  colors.white)
     
-    -- Store buttons for touch handler
     table.insert(buttons, b1); table.insert(buttons, b2)
     table.insert(buttons, b3); table.insert(buttons, b4)
 end
@@ -320,14 +322,13 @@ end
 mon.setBackgroundColor(colors.black)
 mon.clear()
 
--- Epic Startup
 mon.setTextScale(1)
 centerText(h/2, "AWAKENING", colors.red, colors.black)
 sleep(1)
 centerText(h/2, "THE MACHINE GOD...", colors.red, colors.black)
 sleep(1)
 mon.setTextScale(0.5)
-w, h = mon.getSize() -- update dimensions
+w, h = mon.getSize()
 mon.clear()
 
 parallel.waitForAny(
