@@ -1,36 +1,32 @@
--- AEGIS BLACKBOX v6.0
--- Remote Sentinel Data Logger
+local apiKey = "YOUR_OPENAI_API_KEY"
+local url = "https://api.openai.com/v1/chat/completions"
 
-local CHANNEL = 15
-local modem = peripheral.find("modem") or error("No Modem Found")
-modem.open(CHANNEL)
-
-term.clear()
-term.setTextColor(colors.blue)
-print("AEGIS SENTINEL: STANDING BY...")
+print("AI Terminal Initialized. Ask me anything:")
 
 while true do
-    -- Fixes image_ca0895.png: Properly naming all variables
-    local event, side, channel, replyChannel, message, distance = os.pullEvent("modem_message")
+    term.setTextColor(colors.yellow)
+    write("> ")
+    local input = read()
     
-    if channel == CHANNEL and type(message) == "table" then
-        term.clear()
-        term.setCursorPos(1,1)
-        term.setTextColor(colors.blue)
-        print("== [ AEGIS REMOTE SENTINEL ] ==")
-        
-        if message.scram then
-            term.setTextColor(colors.red)
-            print("\n!!! CRITICAL SCRAM !!!")
-            print("REASON: " .. (message.alert or "UNKNOWN"))
-        else
-            term.setTextColor(colors.white)
-            print("\nCORE TEMP: " .. (message.temp or 0) .. " C")
-            print("GRID CAP:  " .. (message.batt or 0) .. " %")
-            print("STEAM:     " .. (message.p or 0) .. " mB")
-        end
-        term.setCursorPos(1, 12)
-        term.setTextColor(colors.gray)
-        print("Last Sync: " .. (message.t or "N/A"))
+    local headers = {
+        ["Content-Type"] = "application/json",
+        ["Authorization"] = "Bearer " .. apiKey
+    }
+    
+    local body = textutils.serialiseJSON({
+        model = "gpt-3.5-turbo", -- or gpt-4
+        messages = {{role = "user", content = input}}
+    })
+
+    print("Thinking...")
+    local response = http.post(url, body, headers)
+    
+    if response then
+        local data = textutils.unserialiseJSON(response.readAll())
+        response.close()
+        term.setTextColor(colors.white)
+        print(data.choices[1].message.content)
+    else
+        print("Error: Could not reach the AI.")
     end
 end
