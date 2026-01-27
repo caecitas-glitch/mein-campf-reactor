@@ -1,139 +1,260 @@
--- AEGIS-OS v21.0.1: OBSIDIAN PRIME (PATCHED)
-local VERSION = "21.0.1"
+-- Configuration
+local SAFE_TEMP = 1200 -- Kelvin (Mekanism meltdown is usually higher, this is safe)
+local MAX_WASTE_PERCENT = 0.90 -- Scram if waste > 90%
+local MIN_COOLANT_PERCENT = 0.10 -- Scram if coolant < 10%
+local TARGET_BURN_RATE = 1.0 -- Default start burn rate
+local BURN_STEP = 1.0 -- How much + / - buttons change rate
 
--- 1. HARDWARE LINKING
-local device = term.current() 
-local reactor = peripheral.find("fission_reactor_logic_adapter")
-local turbine = peripheral.find("turbine_valve")
-local matrix  = peripheral.find("induction_port")
+-- Peripherals
+local reactor = peripheral.find("fissionReactorLogicAdapter")
+local turbine = peripheral.find("turbineValve") -- Optional, but recommended
+local mon = peripheral.find("monitor")
 
-local w, h = device.getSize()
-local isScrammed = false
-local scramReason = "STABLE"
+-- Colors
+local C_BG = colors.gray
+local C_TEXT = colors.white
+local C_ACCENT = colors.cyan
+local C_DANGER = colors.red
+local C_SAFE = colors.lime
+local C_WARN = colors.orange
 
--- 2. SAFE DATA RETRIEVAL
-local function getSafe(obj, func)
-    if not obj then return nil end
-    local ok, res = pcall(obj[func])
-    return ok and res or nil
+-- State
+local isRunning = false
+local autoScramTriggered = false
+local scramReason = "None"
+local currentBurn = TARGET_BURN_RATE
+
+-- Validation
+if not reactor then error("No Fission Reactor Adapter found!") end
+if not mon then error("No Advanced Monitor found!") end
+
+mon.setTextScale(1)
+local w, h = mon.getSize()
+
+-- Helper: Center Text
+local function centerText(y, text, color, bg)
+    mon.setCursorPos(math.ceil((w - #text) / 2), y)
+    mon.setTextColor(color)
+    mon.setBackgroundColor(bg or C_BG)
+    mon.write(text)
 end
 
--- 3. THE SINGULARITY BOOT
-local function playSingularity()
-    device.setBackgroundColor(colors.black)
-    device.clear()
-    local cx, cy = math.floor(w / 2), math.floor(h / 2)
-    for r = 6, 1, -1 do
-        device.clear()
-        device.setTextColor(colors.white)
-        for a = 0, 360, 30 do
-            local x = math.floor(cx + math.cos(math.rad(a)) * (r * 1.5))
-            local y = math.floor(cy + math.sin(math.rad(a)) * r)
-            if x > 0 and x <= w then device.setCursorPos(x, y) device.write("o") end
-        end
-        sleep(0.1)
-    end
-    device.clear()
-    device.setTextColor(colors.blue)
-    device.setCursorPos(cx, cy) device.write("@")
-    sleep(0.15)
-    for r = 1, 8 do
-        for a = 0, 360, 45 do
-            local x = math.floor(cx + math.cos(math.rad(a)) * r)
-            local y = math.floor(cy + math.sin(math.rad(a)) * (r/2))
-            if x > 0 and x <= w then device.setCursorPos(x, y) device.write("*") end
-        end
-        sleep(0.04)
-    end
-    device.clear()
+-- Helper: Draw Bar
+local function drawBar(y, label, val, maxVal, color)
+    mon.setCursorPos(2, y)
+    mon.setTextColor(colors.white)
+    mon.setBackgroundColor(C_BG)
+    mon.write(label)
+    
+    local barWidth = w - 4
+    local filled = math.floor((val / maxVal) * barWidth)
+    if filled < 0 then filled = 0 end
+    if filled > barWidth then filled = barWidth end
+    
+    mon.setCursorPos(2, y + 1)
+    mon.setBackgroundColor(colors.black)
+    mon.write(string.rep(" ", barWidth)) -- Clear background
+    mon.setCursorPos(2, y + 1)
+    mon.setBackgroundColor(color)
+    mon.write(string.rep(" ", filled))
 end
 
--- 4. RENDERING
-local function drawUI(data)
-    device.setBackgroundColor(colors.black)
-    device.clear()
-    device.setCursorPos(1, 1)
-    device.setBackgroundColor(isScrammed and colors.red or colors.blue)
-    device.clearLine()
-    device.write(" AEGIS OS v" .. VERSION .. " | " .. (isScrammed and scramReason or "OK"))
-    device.setBackgroundColor(colors.black)
-    device.setTextColor(colors.white)
-    device.setCursorPos(1, 3) device.write("TEMP: " .. math.floor(data.temp or 0) .. "K")
-    device.setCursorPos(1, 4) device.write("DMG:  " .. (data.dmg or 0) .. "%")
-    device.setCursorPos(1, 5) device.write("BURN: " .. (data.burn or 0))
-    device.setCursorPos(1, 7) device.setTextColor(colors.cyan)
-    device.write("STM: " .. math.floor((data.steam/data.sMax)*100) .. "%")
-    device.setCursorPos(1, 8) device.setTextColor(colors.green)
-    device.write("PWR: " .. math.floor((data.stored/data.maxE)*100) .. "%")
-    device.setTextColor(colors.white)
-    device.setCursorPos(18, 3) device.setBackgroundColor(colors.gray) device.write(" [-10] ")
-    device.setCursorPos(18, 5) device.setBackgroundColor(colors.gray) device.write(" [+10] ")
-    device.setCursorPos(1, 11)
-    device.setBackgroundColor(colors.red) device.setTextColor(colors.white)
-    device.write("     [ STOP ]     ")
-    device.setCursorPos(1, 13)
-    device.setBackgroundColor(isScrammed and colors.orange or colors.gray)
-    device.setTextColor(colors.black)
-    device.write("     [ RESET ]    ")
-end
-
--- 5. THE IRON SENTRY (Failsafe Logic)
-local function monitorCore()
-    while true do
-        -- Refresh peripheral links in case they were lost
-        reactor = reactor or peripheral.find("fission_reactor_logic_adapter")
-        turbine = turbine or peripheral.find("turbine_valve")
-        matrix  = matrix or peripheral.find("induction_port")
-
-        local data = {
-            temp = getSafe(reactor, "getTemperature") or 0,
-            dmg = getSafe(reactor, "getDamage") or 0,
-            burn = getSafe(reactor, "getBurnRate") or 0,
-            steam = (turbine and getSafe(turbine, "getSteam")) and turbine.getSteam().amount or 0,
-            sMax = getSafe(turbine, "getSteamCapacity") or 1,
-            stored = getSafe(matrix, "getEnergy") or 0,
-            maxE = getSafe(matrix, "getMaxEnergy") or 1,
-            waste = (reactor and getSafe(reactor, "getWaste")) and reactor.getWaste().amount or 0,
-            wMax = getSafe(reactor, "getWasteCapacity") or 1
-        }
-
-        if data.dmg > 0 then isScrammed = true scramReason = "DMG!"
-        elseif data.temp > 1150 then isScrammed = true scramReason = "HEAT!"
-        elseif data.waste / data.wMax > 0.95 then isScrammed = true scramReason = "WASTE"
-        elseif data.steam / data.sMax > 0.98 then isScrammed = true scramReason = "STEAM"
-        elseif data.stored / data.maxE > 0.99 then isScrammed = true scramReason = "POWER"
-        end
-
-        if isScrammed and reactor then 
-            pcall(reactor.setBurnRate, 0) 
-            pcall(reactor.scram) 
-        end
-
-        drawUI(data)
-        sleep(0.5) 
-    end
-end
-
--- 6. THE TOUCH SENSOR
-local function touchListener()
-    while true do
-        local _, _, x, y = os.pullEvent("mouse_click")
-        if not reactor then reactor = peripheral.find("fission_reactor_logic_adapter") end
-        local burn = getSafe(reactor, "getBurnRate") or 0
+-- ANIMATION: Super Cool Startup
+local function startupAnimation()
+    mon.setBackgroundColor(colors.black)
+    mon.clear()
+    mon.setTextScale(1)
+    
+    local logos = {
+        "INITIALIZING CORE...",
+        "CONNECTING TO REACTOR...",
+        "CHECKING CONTAINMENT...",
+        "CALIBRATING TURBINE...",
+        "LOADING GUI..."
+    }
+    
+    for i, text in ipairs(logos) do
+        centerText(h/2, text, C_ACCENT, colors.black)
         
-        if x >= 18 and x <= 24 then
-            if y == 3 and reactor then pcall(reactor.setBurnRate, math.max(0, burn - 10))
-            elseif y == 5 and reactor then pcall(reactor.setBurnRate, burn + 10) end
-        elseif x >= 1 and x <= 18 then
-            if y == 11 then isScrammed = true scramReason = "MANUAL"
-            elseif y == 13 and (getSafe(reactor, "getDamage") or 0) == 0 then 
-                isScrammed = false 
-                if reactor then pcall(reactor.activate) end
-            end
+        -- Hex dump effect
+        mon.setTextColor(colors.green)
+        for k=1, 5 do
+            mon.setCursorPos(2, h - 2)
+            mon.write(string.format("0x%X 0x%X 0x%X", math.random(1000,9999), math.random(1000,9999), math.random(1000,9999)))
+            sleep(0.1)
         end
+        sleep(0.2)
+        mon.clear()
+    end
+    
+    -- Flash effect
+    mon.setBackgroundColor(colors.white)
+    mon.clear()
+    sleep(0.05)
+    mon.setBackgroundColor(C_BG)
+    mon.clear()
+end
+
+-- SAFETY: The Watchdog
+local function checkSafety()
+    local status = reactor.getStatus() -- true if active
+    local damage = reactor.getDamagePercent()
+    local temp = reactor.getTemperature()
+    
+    local coolantFilled = reactor.getCoolantFilledPercentage()
+    local wasteFilled = reactor.getWasteFilledPercentage()
+    
+    -- 1. Check Damage
+    if damage > 0 then
+        reactor.scram()
+        return true, "CASING DAMAGE DETECTED"
+    end
+
+    -- 2. Check Temp
+    if temp >= SAFE_TEMP then
+        reactor.scram()
+        return true, "OVERHEAT: " .. math.floor(temp) .. "K"
+    end
+
+    -- 3. Check Coolant
+    if coolantFilled < MIN_COOLANT_PERCENT then
+        reactor.scram()
+        return true, "LOW COOLANT"
+    end
+
+    -- 4. Check Waste
+    if wasteFilled >= MAX_WASTE_PERCENT then
+        reactor.scram()
+        return true, "WASTE FULL"
+    end
+
+    return false, "SYSTEM NOMINAL"
+end
+
+-- GUI: Main Interface
+local function drawGUI()
+    mon.setBackgroundColor(C_BG)
+    mon.clear()
+    
+    -- Header
+    mon.setCursorPos(1,1)
+    mon.setBackgroundColor(colors.blue)
+    mon.setTextColor(colors.white)
+    mon.clearLine()
+    centerText(1, "ATM10 FISSION CONTROLLER", colors.white, colors.blue)
+    
+    -- Stats Fetch
+    local temp = reactor.getTemperature()
+    local waste = reactor.getWasteFilledPercentage()
+    local coolant = reactor.getCoolantFilledPercentage()
+    local actBurn = reactor.getBurnRate()
+    
+    -- Display Stats
+    drawBar(3, "Temperature (" .. math.floor(temp) .. "K)", temp, SAFE_TEMP, (temp > 1000 and C_DANGER or C_ACCENT))
+    drawBar(6, "Coolant (" .. math.floor(coolant*100) .. "%)", coolant, 1, (coolant < 0.2 and C_DANGER or C_SAFE))
+    drawBar(9, "Waste (" .. math.floor(waste*100) .. "%)", waste, 1, (waste > 0.8 and C_WARN or colors.purple))
+    
+    -- Status Box
+    mon.setCursorPos(2, 13)
+    mon.setBackgroundColor(C_BG)
+    mon.setTextColor(colors.lightGray)
+    mon.write("Status: ")
+    
+    if autoScramTriggered then
+        mon.setTextColor(C_DANGER)
+        mon.write("SCRAMMED! " .. scramReason)
+    elseif reactor.getStatus() then
+        mon.setTextColor(C_SAFE)
+        mon.write("ONLINE - Rate: " .. actBurn .. " mB/t")
+    else
+        mon.setTextColor(C_WARN)
+        mon.write("OFFLINE")
+    end
+
+    -- Turbine Stats (if connected)
+    if turbine then
+        local tEnergy = turbine.getProductionRate()
+        mon.setCursorPos(2, 14)
+        mon.setTextColor(colors.yellow)
+        mon.write("Turbine: " .. math.floor(tEnergy) .. " FE/t")
+    end
+
+    -- Buttons
+    -- START
+    mon.setCursorPos(2, h-2)
+    mon.setBackgroundColor(C_SAFE)
+    mon.setTextColor(colors.black)
+    mon.write(" START ")
+    
+    -- STOP
+    mon.setCursorPos(10, h-2)
+    mon.setBackgroundColor(C_DANGER)
+    mon.setTextColor(colors.black)
+    mon.write(" STOP ")
+    
+    -- RATE CONTROLS
+    mon.setCursorPos(w-12, h-2)
+    mon.setBackgroundColor(colors.lightGray)
+    mon.write(" - ")
+    mon.setCursorPos(w-8, h-2)
+    mon.setBackgroundColor(colors.gray)
+    mon.setTextColor(colors.white)
+    mon.write(string.format("%4.1f", currentBurn))
+    mon.setCursorPos(w-2, h-2)
+    mon.setBackgroundColor(colors.lightGray)
+    mon.setTextColor(colors.black)
+    mon.write(" + ")
+end
+
+-- LOGIC: Touch Handler
+local function handleTouch(x, y)
+    -- Start Button (Approx coords, adjust based on your monitor size)
+    if y == h-2 and x >= 2 and x <= 8 then
+        if not autoScramTriggered then
+            reactor.activate()
+        end
+    end
+    
+    -- Stop Button
+    if y == h-2 and x >= 10 and x <= 15 then
+        reactor.scram()
+        autoScramTriggered = false -- Reset alarm manually
+    end
+    
+    -- Rate -
+    if y == h-2 and x >= w-12 and x <= w-10 then
+        currentBurn = math.max(0.1, currentBurn - BURN_STEP)
+        reactor.setBurnRate(currentBurn)
+    end
+    
+    -- Rate +
+    if y == h-2 and x >= w-2 and x <= w then
+        currentBurn = currentBurn + BURN_STEP
+        reactor.setBurnRate(currentBurn)
     end
 end
 
--- EXECUTION
-playSingularity()
-parallel.waitForAny(monitorCore, touchListener)
+-- MAIN LOOPS
+startupAnimation()
+
+local function loopStats()
+    while true do
+        local danger, reason = checkSafety()
+        if danger then
+            autoScramTriggered = true
+            scramReason = reason
+        end
+        drawGUI()
+        sleep(0.5)
+    end
+end
+
+local function loopTouch()
+    while true do
+        local event, side, x, y = os.pullEvent("monitor_touch")
+        handleTouch(x, y)
+    end
+end
+
+-- Run threads
+parallel.waitForAny(loopStats, loopTouch)
