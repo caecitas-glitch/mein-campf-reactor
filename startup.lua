@@ -1,5 +1,5 @@
--- TITAN-X: OMEGA PROTOCOL v3.0
--- "The Heavy Industry Update"
+-- TITAN-X: OMEGA PROTOCOL v4.0
+-- "The Stable Core Update"
 
 -- ================= CONFIGURATION =================
 local SAFE_TEMP = 1200         -- Kelvin (Scram if higher)
@@ -15,6 +15,7 @@ local matrix  = peripheral.find("inductionPort")
 local mon     = peripheral.find("monitor")
 
 -- ================= COLORS =================
+-- Defined locally to prevent nil errors
 local C_BG      = colors.black
 local C_PANEL   = colors.gray
 local C_HEADER  = colors.blue
@@ -24,6 +25,7 @@ local C_GOOD    = colors.lime
 local C_WARN    = colors.orange
 local C_BAD     = colors.red
 local C_DATA    = colors.cyan
+local C_WASTE   = colors.magenta -- explicit definition
 
 -- ================= INIT CHECKS =================
 if not reactor then error("ERR: NO REACTOR ADAPTER") end
@@ -35,7 +37,7 @@ local w, h = mon.getSize()
 local isRunning = false
 local scramTriggered = false
 local scramReason = "NONE"
-local targetBurn = reactor.getBurnRate() -- Sync with reactor on boot
+local targetBurn = reactor.getBurnRate()
 
 -- ================= FORMATTING TOOLS =================
 local function formatNum(num)
@@ -48,6 +50,7 @@ local function formatNum(num)
 end
 
 local function drawBox(x, y, width, height, color)
+    if color == nil then color = C_PANEL end -- Safety
     mon.setBackgroundColor(color)
     for i = 0, height-1 do
         mon.setCursorPos(x, y + i)
@@ -62,82 +65,58 @@ local function centerText(y, text, fg, bg)
     mon.write(text)
 end
 
+-- CRASH FIX: Added safety check for 'color'
 local function drawBar(x, y, width, percent, color, label)
     mon.setCursorPos(x, y)
-    mon.setBackgroundColor(C_BG)
+    mon.setBackgroundColor(C_PANEL)
     mon.setTextColor(C_LABEL)
     mon.write(label)
     
     local barW = width
+    -- Ensure percent is a number between 0 and 1
+    if percent == nil then percent = 0 end
+    if percent < 0 then percent = 0 end
+    if percent > 1 then percent = 1 end
+
     local filled = math.floor(percent * barW)
-    if filled > barW then filled = barW end
-    if filled < 0 then filled = 0 end
     
+    -- Draw Track
     mon.setCursorPos(x, y+1)
     mon.setBackgroundColor(colors.gray)
     mon.write(string.rep(" ", barW))
+    
+    -- Draw Fill (Safety Check Here)
+    if color == nil then color = C_TEXT end 
+    
     mon.setCursorPos(x, y+1)
     mon.setBackgroundColor(color)
-    mon.write(string.rep(" ", filled))
+    if filled > 0 then
+        mon.write(string.rep(" ", filled))
+    end
 end
 
 -- ================= ANIMATION =================
-local function drawDoor(percent)
-    mon.setBackgroundColor(colors.gray)
-    local center = math.floor(w/2)
-    local openWidth = math.floor((w/2) * percent)
-    
-    -- Left Door
-    for y=1, h do
-        mon.setCursorPos(1, y)
-        mon.write(string.rep(" ", center - openWidth))
-    end
-    -- Right Door
-    for y=1, h do
-        mon.setCursorPos(center + openWidth, y)
-        mon.write(string.rep(" ", (w - (center + openWidth))))
-    end
-    
-    -- Clamps
-    if percent < 0.1 then
-        mon.setBackgroundColor(colors.orange)
-        mon.setCursorPos(center-2, h/2 - 2)
-        mon.write("LOCK")
-        mon.setCursorPos(center-2, h/2 + 2)
-        mon.write("LOCK")
-    end
-end
-
 local function bootSequence()
     mon.setTextScale(1)
     mon.setBackgroundColor(colors.black)
     mon.clear()
     
-    centerText(h/2, "SYSTEM BOOT", colors.cyan, colors.black)
-    sleep(1)
-    
-    -- Close Doors
-    for i=10, 0, -1 do
-        drawDoor(i/10)
-        sleep(0.05)
-    end
-    
-    mon.setBackgroundColor(colors.gray)
-    centerText(h/2, "DIAGNOSTIC...", colors.lime, colors.gray)
-    sleep(0.5)
-    centerText(h/2, "CONNECTING...", colors.lime, colors.gray)
+    centerText(h/2, "SYSTEM BOOT", C_DATA, colors.black)
     sleep(0.5)
     
-    -- Open Doors
+    -- Flash effect
+    mon.setBackgroundColor(colors.white)
+    mon.clear()
+    sleep(0.1)
     mon.setBackgroundColor(colors.black)
     mon.clear()
+    
     mon.setTextScale(0.5) -- High Res for dashboard
     local newW, newH = mon.getSize()
     w, h = newW, newH -- Update global size vars
 end
 
 -- ================= UI DRAWING =================
-
 local function drawStaticUI()
     mon.setBackgroundColor(C_BG)
     mon.clear()
@@ -151,16 +130,19 @@ local function drawStaticUI()
     
     -- Column 1: Reactor
     drawBox(2, 5, 24, h-8, C_PANEL)
-    centerText(6, " REACTOR CORE ", C_TEXT, C_PANEL) -- Fake center relative to box? No, manual:
-    mon.setCursorPos(3, 6); mon.write("REACTOR CORE")
+    mon.setCursorPos(4, 6)
+    mon.setTextColor(C_TEXT)
+    mon.write("REACTOR CORE")
     
     -- Column 2: Output
     drawBox(28, 5, 24, h-8, C_PANEL)
-    mon.setCursorPos(29, 6); mon.write("TURBINE & MATRIX")
+    mon.setCursorPos(30, 6)
+    mon.write("TURBINE & MATRIX")
     
-    -- Column 3: Status & Log
+    -- Column 3: Status
     drawBox(54, 5, w-55, h-8, C_PANEL)
-    mon.setCursorPos(55, 6); mon.write("SYSTEM STATUS")
+    mon.setCursorPos(56, 6)
+    mon.write("SYSTEM STATUS")
     
     -- Footer/Controls
     drawBox(1, h-4, w, 4, colors.darkGray)
@@ -179,16 +161,15 @@ local function drawControls()
     mon.setCursorPos(16, h-2)
     mon.write("SCRAM")
     
-    -- Rate -
+    -- Rate Controls
     drawBox(w-20, h-3, 8, 3, colors.lightGray)
     mon.setTextColor(colors.black)
-    mon.setCursorPos(w-18, h-2)
+    mon.setCursorPos(w-19, h-2)
     mon.write("- " .. math.floor(BURN_STEP))
     
-    -- Rate +
     drawBox(w-10, h-3, 8, 3, colors.lightGray)
     mon.setTextColor(colors.black)
-    mon.setCursorPos(w-8, h-2)
+    mon.setCursorPos(w-9, h-2)
     mon.write("+ " .. math.floor(BURN_STEP))
 end
 
@@ -202,6 +183,7 @@ local function updateStats()
     local r_fuel = reactor.getFuelFilledPercentage()
     local r_heat = reactor.getHeatingRate()
     
+    -- Turbine Data
     local t_flow = 0
     local t_prod = 0
     if turbine then
@@ -209,8 +191,9 @@ local function updateStats()
         t_prod = turbine.getProductionRate()
     end
     
+    -- Matrix Data
     local m_energy = 0
-    local m_max = 0
+    local m_max = 1
     local m_in = 0
     local m_out = 0
     if matrix then
@@ -219,6 +202,7 @@ local function updateStats()
         m_in = matrix.getLastInput()
         m_out = matrix.getLastOutput()
     end
+    if m_max == 0 then m_max = 1 end -- Prevent div by zero
 
     -- === COLUMN 1: REACTOR ===
     mon.setBackgroundColor(C_PANEL)
@@ -234,8 +218,8 @@ local function updateStats()
     -- Fuel
     drawBar(3, 14, 22, r_fuel, C_GOOD, "Fuel: " .. math.floor(r_fuel*100) .. "%")
     
-    -- Waste
-    local wasteCol = r_wast > 0.8 and C_WARN or colors.magenta
+    -- Waste (Using safe C_WASTE)
+    local wasteCol = r_wast > 0.8 and C_WARN or C_WASTE
     drawBar(3, 17, 22, r_wast, wasteCol, "Waste: " .. math.floor(r_wast*100) .. "%")
     
     -- Stats text
@@ -250,13 +234,10 @@ local function updateStats()
     mon.setCursorPos(29, 8); mon.setTextColor(colors.yellow); mon.write("TURBINE")
     mon.setCursorPos(29, 9); mon.setTextColor(C_LABEL); mon.write("Prod: "); 
     mon.setTextColor(colors.white); mon.write(formatNum(t_prod) .. " FE/t")
-    mon.setCursorPos(29, 10); mon.setTextColor(C_LABEL); mon.write("Flow: "); 
-    mon.setTextColor(colors.white); mon.write(formatNum(t_flow) .. " mB/t")
     
     -- Matrix
     mon.setCursorPos(29, 12); mon.setTextColor(colors.green); mon.write("INDUCTION MATRIX")
-    local matPct = 0
-    if m_max > 0 then matPct = m_energy / m_max end
+    local matPct = m_energy / m_max
     
     drawBar(29, 13, 22, matPct, colors.green, "Chg: " .. math.floor(matPct*100) .. "%")
     
@@ -266,16 +247,13 @@ local function updateStats()
     mon.setCursorPos(29, 17); mon.setTextColor(C_LABEL); mon.write("In:    ")
     mon.setTextColor(colors.white); mon.write(formatNum(m_in) .. " FE/t")
 
-    mon.setCursorPos(29, 18); mon.setTextColor(C_LABEL); mon.write("Out:   ")
-    mon.setTextColor(colors.white); mon.write(formatNum(m_out) .. " FE/t")
-
     -- === COLUMN 3: STATUS ===
-    mon.setCursorPos(55, 8)
+    mon.setCursorPos(56, 8)
     if scramTriggered then
         mon.setTextColor(C_BAD)
         mon.write("!!! SCRAMMED !!!")
-        mon.setCursorPos(55, 9)
-        mon.write("REASON: " .. scramReason)
+        mon.setCursorPos(56, 9)
+        mon.write(scramReason)
     elseif r_stat then
         mon.setTextColor(C_GOOD)
         mon.write("ONLINE - NOMINAL")
@@ -285,10 +263,10 @@ local function updateStats()
     end
     
     -- Target Setting
-    mon.setCursorPos(55, 12)
+    mon.setCursorPos(56, 12)
     mon.setTextColor(C_LABEL)
     mon.write("TARGET RATE:")
-    mon.setCursorPos(55, 13)
+    mon.setCursorPos(56, 13)
     mon.setTextColor(colors.cyan)
     mon.setTextScale(1) -- Big text for setting
     mon.write(targetBurn .. "  ")
@@ -327,7 +305,7 @@ local function handleTouch(x, y)
         -- SCRAM (14 to 24)
         if x >= 14 and x <= 24 then
             reactor.scram()
-            scramTriggered = false -- Reset alarm (allows restart)
+            scramTriggered = false 
             scramReason = "MANUAL"
         end
         -- MINUS (w-20 to w-12)
@@ -361,7 +339,7 @@ local function loopTouch()
     while true do
         local _, _, x, y = os.pullEvent("monitor_touch")
         handleTouch(x, y)
-        drawControls() -- Redraw buttons to give visual feedback if needed
+        drawControls() 
     end
 end
 
