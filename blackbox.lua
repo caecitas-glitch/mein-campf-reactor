@@ -1,15 +1,18 @@
--- SETTINGS & PERIPHERALS
+-- SETTINGS & PERIPHERALSs
 local kbMon = peripheral.wrap("monitor_3")
 local dispMon = peripheral.wrap("monitor_5")
-local LAMP_SIDE = "top" -- Change this to the side your lamp is on
+local reactor = peripheral.find("fissionReactorLogicAdapter")
+local turbine = peripheral.wrap("turbineValve_0") -- Specific ID for your valve
 
-if not kbMon or not dispMon then error("Monitors not found!") end
+if not kbMon or not dispMon or not reactor or not turbine then 
+    error("Hardware missing! Check Monitor 3, Monitor 5, Reactor, and Turbine Valve.") 
+end
 
 kbMon.setTextScale(1)
 dispMon.setTextScale(1)
 
 local currentInput = ""
-local aiResponse = "Jarvis: Neural link and Redstone systems online."
+local aiResponse = "Jarvis: Fission Reactor and Industrial Turbine links established."
 
 -- KEYBOARD LAYOUT
 local layout = {
@@ -19,19 +22,36 @@ local layout = {
     {"SPACE", "ENTER", "CLEAR"}
 }
 
--- REDSTONE LOGIC
+-- POWER SYSTEM CONTROL LOGIC
 function processCommands(response)
     local text = response:upper()
-    local actionTaken = ""
+    local action = ""
     
-    if text:find("TURN ON") or text:find("LIGHTS ON") or text:find("ACTIVATING") then
-        redstone.setOutput(LAMP_SIDE, true)
-        actionTaken = " [SYSTEM: REDSTONE HIGH]"
-    elseif text:find("TURN OFF") or text:find("LIGHTS OFF") or text:find("DEACTIVATING") then
-        redstone.setOutput(LAMP_SIDE, false)
-        actionTaken = " [SYSTEM: REDSTONE LOW]"
+    -- Reactor Commands
+    if text:find("SCRAM") or text:find("SHUTDOWN") then
+        reactor.scram()
+        action = "\n[SYSTEM: EMERGENCY SCRAM INITIATED]"
+    elseif text:find("ACTIVATE") then
+        reactor.activate()
+        action = "\n[SYSTEM: REACTOR ACTIVATED]"
+    elseif text:find("BURN RATE") then
+        local rate = text:match("SET TO (%d+%.?%d*)")
+        if rate then
+            reactor.setBurnRate(tonumber(rate))
+            action = "\n[SYSTEM: BURN RATE SET TO " .. rate .. "]"
+        end
     end
-    return actionTaken
+
+    -- Turbine Commands
+    if text:find("DUMP STEAM") then
+        turbine.setDumpMode("DUMPING")
+        action = action .. "\n[SYSTEM: TURBINE DUMPING STEAM]"
+    elseif text:find("IDLE TURBINE") then
+        turbine.setDumpMode("IDLE")
+        action = action .. "\n[SYSTEM: TURBINE IDLING]"
+    end
+    
+    return action
 end
 
 -- UI DRAWING
@@ -53,9 +73,6 @@ end
 function drawKeyboard()
     kbMon.clear()
     local kw, kh = kbMon.getSize()
-    local btnW = math.floor(kw / 10)
-    
-    -- Input Header
     kbMon.setCursorPos(math.floor(kw/2 - 10), 2)
     kbMon.setTextColor(colors.yellow)
     kbMon.write("CMD> " .. currentInput .. "_")
@@ -80,16 +97,24 @@ function drawKeyboard()
     end
 end
 
--- AI CONNECTION
+-- AI CONNECTION WITH INTEGRATED POWER STATS
 function askAI(prompt)
-    -- System instructions tell the AI how to trigger the redstone
-    local systemMsg = "Context: You are Jarvis. You control the base redstone. " ..
-                      "To turn on lights, use the word 'ACTIVATING'. " ..
-                      "To turn them off, use 'DEACTIVATING'. "
+    -- Jarvis reads Reactor AND Turbine stats
+    local stats = string.format(
+        "CORE: Temp %.1fK, Damage %.1f%%. TURBINE: Energy %d RF, Steam %d/%d. ",
+        reactor.getTemperature(),
+        reactor.getDamagePercent(),
+        turbine.getEnergy(),
+        turbine.getSteam(),
+        turbine.getSteamCapacity()
+    )
+    
+    local systemMsg = "Context: You are Jarvis. Manage the Reactor and Turbine. " ..
+                      "To stop core: 'SCRAM'. To vent turbine: 'DUMP STEAM'. "
                       
     local payload = {
         model = "llama3",
-        prompt = systemMsg .. "\nUser: " .. prompt .. "\nJarvis:",
+        prompt = stats .. "\n" .. systemMsg .. "\nUser: " .. prompt .. "\nJarvis:",
         stream = false
     }
     
@@ -99,7 +124,7 @@ function askAI(prompt)
         res.close()
         return data.response
     end
-    return "Error: Local AI connection lost."
+    return "Error: Local AI communication failed."
 end
 
 -- STARTUP
@@ -118,7 +143,7 @@ while true do
             
             if key then
                 if key == "ENTER" then
-                    displayWrap("Jarvis: Processing...")
+                    displayWrap("Jarvis: Synchronizing Power Systems...")
                     local answer = askAI(currentInput)
                     local note = processCommands(answer)
                     aiResponse = answer .. note
