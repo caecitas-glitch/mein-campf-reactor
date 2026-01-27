@@ -1,19 +1,19 @@
--- Jarvis dual-monitor control system
+-- Configuration
 local kbMon = peripheral.wrap("monitor_3")   -- Touchscreen keyboard
-local dispMon = peripheral.wrap("monitor_4") -- AI response display
+local dispMon = peripheral.wrap("monitor_5") -- AI response display
 
 if not kbMon or not dispMon then 
-    error("One or more monitors not found. Check modem connections!") 
+    error("Monitor missing! Ensure monitor_3 and monitor_5 are connected.") 
 end
 
--- Force larger text for easier clicking
+-- Force Scale 1 for better visibility on large ATM10 walls
 kbMon.setTextScale(1)
 dispMon.setTextScale(1)
 
 local currentInput = ""
-local aiResponse = "Jarvis: Dual-link established."
+local aiResponse = "Jarvis: Neural link established on monitor_5."
 
--- Layout with Spacebar and Utility keys
+-- Full-width Keyboard Layout
 local layout = {
     {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"},
     {"A", "S", "D", "F", "G", "H", "J", "K", "L"},
@@ -22,35 +22,37 @@ local layout = {
 }
 
 function drawUI()
-    -- Draw Keyboard Monitor
+    -- Draw Keyboard (monitor_3)
     kbMon.clear()
     local kw, kh = kbMon.getSize()
     local btnW = math.floor(kw / 10)
     
     kbMon.setCursorPos(1, 1)
     kbMon.setTextColor(colors.yellow)
-    kbMon.write("INPUT: " .. currentInput .. "_")
+    kbMon.write("TYPING: " .. currentInput .. "_")
 
     for r, row in ipairs(layout) do
         for c, key in ipairs(row) do
             local x = (c - 1) * btnW + 1
             local y = kh - 5 + r
             kbMon.setCursorPos(x, y)
+            
             if key == "ENTER" then kbMon.setTextColor(colors.green)
             elseif key == "CLEAR" or key == "BS" then kbMon.setTextColor(colors.red)
             else kbMon.setTextColor(colors.white) end
+            
             kbMon.write("[" .. key .. "]")
         end
     end
 
-    -- Draw Display Monitor
+    -- Draw Display (monitor_5)
     dispMon.clear()
-    dispMon.setCursorPos(1,1)
+    dispMon.setCursorPos(1, 1)
     dispMon.setTextColor(colors.cyan)
     
-    -- Basic text wrapping logic for the main screen
     local dw, dh = dispMon.getSize()
     local line = 1
+    -- Text wrapping for the response display
     for i = 1, #aiResponse, dw do
         if line <= dh then
             dispMon.setCursorPos(1, line)
@@ -68,13 +70,13 @@ function askAI(prompt)
         res.close()
         return data.response
     end
-    return "Error: Brain offline."
+    return "Error: Could not reach Llama 3."
 end
 
 drawUI()
 
 while true do
-    -- Filter touches to ONLY the keyboard monitor (monitor_3)
+    -- Only capture touches from the keyboard monitor
     local event, side, x, y = os.pullEvent("monitor_touch")
     
     if side == "monitor_3" then
@@ -87,7 +89,7 @@ while true do
         
         if key then
             if key == "ENTER" then
-                aiResponse = "Jarvis: Thinking..."
+                aiResponse = "Jarvis: Processing..."
                 drawUI()
                 aiResponse = "Jarvis: " .. askAI(currentInput)
                 currentInput = ""
