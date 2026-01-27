@@ -1,12 +1,12 @@
--- TITAN-X: v10.0 ANALYST UPDATE
--- Features: 60-Second Trends for ALL stats
--- Added: Heating Rate, Damage, Flow Rate, Matrix Capacity, True Power Change
+-- PROMETHEUS: ETERNAL FIRE v11.0
+-- "God of Fire" Edition
+-- Features: 60-Second Trends, Full Matrix Analytics, Crash Report
 
 -- ================= CONFIGURATION =================
 local SAFE_TEMP = 1200         
 local MAX_WASTE = 0.90         
 local MIN_COOLANT = 0.15       
-local REFRESH_RATE = 1.0 -- Slower refresh to build stable 1m trends
+local REFRESH_RATE = 1.0 
 
 -- ================= PERIPHERALS =================
 local reactor = peripheral.find("fissionReactorLogicAdapter")
@@ -26,14 +26,10 @@ local scramReason = "None"
 local targetBurn = 50.0 
 local actionLog = {}
 
--- Trend History (Stores last 60s of data)
+-- Trend History
 local history = {
-    temp = {},
-    burn = {},
-    heat = {},
-    flow = {},
-    prod = {},
-    energy = {}
+    temp = {}, burn = {}, heat = {},
+    flow = {}, prod = {}, energy = {}
 }
 
 -- Sync burn rate safely
@@ -65,28 +61,18 @@ local function addLog(msg)
 end
 
 -- ================= TREND ENGINE =================
--- Adds current value to history and removes old (>60s) entries
 local function updateTrend(key, value)
     local now = os.epoch("utc")
     table.insert(history[key], {t = now, v = value})
-    
-    -- Remove entries older than 60000ms (1 minute)
     while #history[key] > 0 and (now - history[key][1].t > 60000) do
         table.remove(history[key], 1)
     end
 end
 
--- Calculates difference between NOW and 1 MINUTE AGO
 local function getTrend(key)
     local data = history[key]
     if #data < 2 then return 0 end
-    
-    local newest = data[#data].v
-    local oldest = data[1].v
-    
-    -- If data is less than 60s old, extrapolate to per minute? 
-    -- No, let's just show raw change over the captured window.
-    return newest - oldest
+    return data[#data].v - data[1].v
 end
 
 local function formatTrend(val, suffix)
@@ -203,31 +189,31 @@ local function drawGUI()
     if scramTriggered then
         -- CRASH MODE
         drawBox(1, 1, w, 3, colors.red)
-        centerText(2, "!!! MELTDOWN PREVENTED !!!", colors.yellow, colors.red)
+        centerText(2, "!!! CORE FAILURE !!!", colors.yellow, colors.red)
         writeText(2, 5, "CAUSE: " .. scramReason, colors.red)
         writeText(2, 7, "DAMAGE: " .. r_dmg .. "%", colors.orange)
-        writeText(2, 9, "LAST LOGS:", colors.lightGray)
+        writeText(2, 9, "EVENT LOG:", colors.lightGray)
         for i, msg in ipairs(actionLog) do
             if i <= 8 then writeText(2, 9+i, msg, colors.white) end
         end
     else
         -- DASHBOARD MODE
-        drawBox(1, 1, w, 3, colors.blue)
-        centerText(2, "TITAN-X :: ANALYTICS", colors.white, colors.blue)
+        drawBox(1, 1, w, 3, colors.orange)
+        centerText(2, "PROMETHEUS :: ETERNAL FIRE", colors.black, colors.orange)
 
         -- === COLUMN 1: REACTOR ===
-        writeText(2, 5, "REACTOR", colors.cyan)
+        writeText(2, 5, "REACTOR CORE", colors.orange)
         
         -- Status
         writeText(2, 6, "Status:", colors.lightGray)
-        if r_stat then writeText(10, 6, "ONLINE", colors.lime)
-        else writeText(10, 6, "OFFLINE", colors.gray) end
+        if r_stat then writeText(10, 6, "ACTIVE", colors.lime)
+        else writeText(10, 6, "IDLE", colors.gray) end
         
         -- Temp + Trend
         local t_trend = getTrend("temp")
         local t_col = (r_temp > 1000) and colors.red or colors.white
         writeText(2, 7, "Temp:   "..math.floor(r_temp).." K", t_col)
-        writeText(20, 7, formatTrend(t_trend, "K"), (t_trend > 0 and colors.orange or colors.green))
+        writeText(20, 7, formatTrend(t_trend, "K"), (t_trend > 0 and colors.red or colors.green))
         
         -- Heating Rate
         writeText(2, 8, "Heat:   "..formatNum(r_heat), colors.white)
@@ -238,10 +224,10 @@ local function drawGUI()
         writeText(20, 9, formatTrend(getTrend("burn"), ""), colors.gray)
         
         -- Damage
-        writeText(2, 10, "Damage: "..r_dmg.."%", (r_dmg > 0 and colors.red or colors.green))
+        writeText(2, 10, "Integrity: "..(100-r_dmg).."%", (r_dmg > 0 and colors.red or colors.green))
 
         -- Bars
-        local coolC = (r_cool < 0.2) and colors.red or colors.lime
+        local coolC = (r_cool < 0.2) and colors.red or colors.cyan
         drawBar(2, 12, 22, r_cool, coolC, "Coolant: "..math.floor(r_cool*100).."%")
         
         local wasteC = (r_wast > 0.8) and colors.orange or colors.magenta
@@ -249,7 +235,7 @@ local function drawGUI()
 
         -- === COLUMN 2: POWER ===
         local col2 = 32
-        writeText(col2, 5, "TURBINE & MATRIX", colors.yellow)
+        writeText(col2, 5, "GRID & MATRIX", colors.yellow)
         
         -- Turbine Stats
         writeText(col2, 6, "Flow:   "..formatNum(t_flow).." mB/t", colors.white)
@@ -262,16 +248,16 @@ local function drawGUI()
         local m_trend = getTrend("energy")
         local m_pct = m_eng / m_max
         
-        writeText(col2, 9, "Matrix Energy:", colors.green)
+        writeText(col2, 9, "Matrix Charge:", colors.green)
         drawBar(col2, 10, 22, m_pct, colors.green, "")
         
         writeText(col2, 12, "Stored: "..formatNum(m_eng).." FE", colors.white)
         writeText(col2, 13, "Cap:    "..formatNum(m_max).." FE", colors.gray)
         
-        -- Calculated Power Change (Net Gain/Loss per minute)
-        writeText(col2, 14, "Change: ", colors.lightGray)
+        -- Calculated Power Change
+        writeText(col2, 14, "Net Change:", colors.lightGray)
         local changeCol = (m_trend >= 0) and colors.lime or colors.red
-        writeText(col2+8, 14, formatNum(m_trend).." /m", changeCol)
+        writeText(col2+12, 14, formatTrend(m_trend, " /m"), changeCol)
     end
 
     -- CONTROLS
@@ -284,8 +270,8 @@ local function drawGUI()
     
     drawButton("m10", 2, bY+1, 5, 3, colors.gray, "-10", colors.white)
     drawButton("p10", 8, bY+1, 5, 3, colors.gray, "+10", colors.white)
-    drawButton("start", 14, bY+1, 8, 3, colors.green, "START", colors.black)
-    drawButton("stop",  23, bY+1, 8, 3, colors.red,   "STOP",  colors.white)
+    drawButton("start", 14, bY+1, 8, 3, colors.green, "IGNITE", colors.black)
+    drawButton("stop",  23, bY+1, 8, 3, colors.red,   "SCRAM",  colors.white)
 end
 
 -- ================= INPUT =================
@@ -294,11 +280,11 @@ local function handleTouch(x, y)
         if x >= b.x and x < b.x + b.w and y >= b.y and y < b.y + b.h then
             if name == "start" then
                 if not scramTriggered then
-                    if not reactor.getStatus() then reactor.activate(); addLog("Started") end
+                    if not reactor.getStatus() then reactor.activate(); addLog("Ignition Seq") end
                     reactor.setBurnRate(targetBurn)
                 else addLog("ERR: Clear Alarm") end
             elseif name == "stop" then
-                if reactor.getStatus() then reactor.scram(); addLog("User Scram") end
+                if reactor.getStatus() then reactor.scram(); addLog("Manual SCRAM") end
                 if scramTriggered then scramTriggered = false; scramReason = "None"; mon.clear() end
             elseif name == "p10" then 
                 targetBurn = targetBurn + 10; addLog("Rate +10")
@@ -317,6 +303,8 @@ end
 -- ================= RUN =================
 mon.setBackgroundColor(colors.black)
 mon.clear()
+centerText(h/2, "PROMETHEUS ONLINE", colors.orange, colors.black)
+sleep(1)
 parallel.waitForAny(
     function() while true do drawGUI(); sleep(REFRESH_RATE) end end,
     function() while true do local _,_,x,y = os.pullEvent("monitor_touch"); handleTouch(x,y) end end
