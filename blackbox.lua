@@ -1,17 +1,17 @@
--- JARVIS v4.0 - Edge-to-Edge Keyboard Layout
-local kbMon = peripheral.wrap("monitor_3")   -- Touchscreen keyboard
-local dispMon = peripheral.wrap("monitor_5") -- AI response display
+-- Configuration
+local kbMon = peripheral.wrap("monitor_3")   -- The 3x2 Keyboard
+local dispMon = peripheral.wrap("monitor_5") -- The Brain Display
 
 if not kbMon or not dispMon then 
-    error("Check monitor connections! monitor_3 and monitor_5 required.") 
+    error("Monitors not found! Check monitor_3 and monitor_5.") 
 end
 
--- Set scale to 1 for a balanced look on a 3x2 monitor
+-- Force Scale 1 for the best look on large monitors
 kbMon.setTextScale(1)
 dispMon.setTextScale(1)
 
 local currentInput = ""
-local aiResponse = "Jarvis: Ready for command."
+local aiResponse = "Jarvis: Neural link active."
 
 -- Keyboard Layout
 local layout = {
@@ -22,43 +22,42 @@ local layout = {
 }
 
 function drawUI()
-    -- --- KEYBOARD (monitor_3) ---
+    -- --- KEYBOARD MONITOR (monitor_3) ---
     kbMon.clear()
     local kw, kh = kbMon.getSize()
     
-    -- Calculate width for 10 keys across the whole monitor
-    local btnW = math.floor(kw / 10)
-    local yStart = 4 -- Starts lower to leave room for the input line
-
-    -- Draw Input Bar at the top of the keyboard monitor
-    kbMon.setCursorPos(2, 2)
+    -- Draw Input Bar centered at top
+    kbMon.setCursorPos(math.floor(kw/2 - 10), 2)
     kbMon.setTextColor(colors.yellow)
     kbMon.write("TYPING: " .. currentInput .. "_")
 
+    -- Draw Keys Edge-to-Edge
     for r, row in ipairs(layout) do
-        -- For the last row (special keys), we space them differently
-        local rowCount = #row
-        local rowBtnW = math.floor(kw / rowCount)
+        local numKeys = #row
+        local btnWidth = math.floor(kw / numKeys) -- Divide total width by keys in THIS row
+        local yPos = r + 4 -- Start drawing row 4 to leave room for input header
 
         for c, key in ipairs(row) do
-            local x = (c - 1) * rowBtnW + 1
-            local y = r + yStart
+            local xPos = (c - 1) * btnWidth + 1
+            kbMon.setCursorPos(xPos, yPos)
             
-            kbMon.setCursorPos(x, y)
-            
-            -- Styling with '.' as a separator for a mechanical look
+            -- Draw Separator and Key
             kbMon.setTextColor(colors.gray)
             kbMon.write(".") 
             
+            -- Color code
             if key == "ENTER" then kbMon.setTextColor(colors.green)
             elseif key == "CLEAR" or key == "BS" then kbMon.setTextColor(colors.red)
             else kbMon.setTextColor(colors.white) end
             
+            -- Center the key text within its giant button area
+            local textOffset = math.floor((btnWidth - #key) / 2)
+            kbMon.setCursorPos(xPos + textOffset, yPos)
             kbMon.write(key)
         end
     end
 
-    -- --- DISPLAY (monitor_5) ---
+    -- --- DISPLAY MONITOR (monitor_5) ---
     dispMon.clear()
     dispMon.setCursorPos(1,1)
     dispMon.setTextColor(colors.cyan)
@@ -74,6 +73,21 @@ function drawUI()
     end
 end
 
+-- Same detection logic used for drawing
+function getKeyAt(tx, ty)
+    local kw, kh = kbMon.getSize()
+    local yStart = 5 -- This must match the draw loop (yPos start)
+    local rIdx = ty - 4
+    
+    if layout[rIdx] then
+        local numKeys = #layout[rIdx]
+        local btnWidth = math.floor(kw / numKeys)
+        local cIdx = math.floor((tx - 1) / btnWidth) + 1
+        return layout[rIdx][cIdx]
+    end
+    return nil
+end
+
 function askAI(prompt)
     local payload = { model = "llama3", prompt = prompt, stream = false }
     local res = http.post("http://127.0.0.1:11434/api/generate", textutils.serialiseJSON(payload))
@@ -82,7 +96,7 @@ function askAI(prompt)
         res.close()
         return data.response
     end
-    return "Error: Local AI offline."
+    return "Error: Brain offline."
 end
 
 drawUI()
@@ -91,29 +105,18 @@ while true do
     local event, side, x, y = os.pullEvent("monitor_touch")
     
     if side == "monitor_3" then
-        local kw, kh = kbMon.getSize()
-        local yStart = 4
-        local rIdx = y - yStart
-        
-        if layout[rIdx] then
-            local rowCount = #layout[rIdx]
-            local rowBtnW = math.floor(kw / rowCount)
-            local cIdx = math.floor((x - 1) / rowBtnW) + 1
-            
-            local key = layout[rIdx][cIdx]
-            
-            if key then
-                if key == "ENTER" then
-                    aiResponse = "Jarvis: Thinking..."
-                    drawUI()
-                    aiResponse = "Jarvis: " .. askAI(currentInput)
-                    currentInput = ""
-                elseif key == "BS" then currentInput = currentInput:sub(1, -2)
-                elseif key == "SPACE" then currentInput = currentInput .. " "
-                elseif key == "CLEAR" then currentInput = ""
-                else currentInput = currentInput .. key end
+        local key = getKeyAt(x, y)
+        if key then
+            if key == "ENTER" then
+                aiResponse = "Jarvis: Thinking..."
                 drawUI()
-            end
+                aiResponse = "Jarvis: " .. askAI(currentInput)
+                currentInput = ""
+            elseif key == "BS" then currentInput = currentInput:sub(1, -2)
+            elseif key == "SPACE" then currentInput = currentInput .. " "
+            elseif key == "CLEAR" then currentInput = ""
+            else currentInput = currentInput .. key end
+            drawUI()
         end
     end
 end
