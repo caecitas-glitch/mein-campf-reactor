@@ -1,16 +1,17 @@
+-- SETTINGS & PERIPHERALS
 local kbMon = peripheral.wrap("monitor_3")
 local dispMon = peripheral.wrap("monitor_5")
+local LAMP_SIDE = "top" -- Change this to the side your lamp is on
 
-if not kbMon or not dispMon then error("Check monitor IDs!") end
+if not kbMon or not dispMon then error("Monitors not found!") end
 
--- Scale 1 is best for a 4x2 wall to keep keys large but readable
 kbMon.setTextScale(1)
 dispMon.setTextScale(1)
 
 local currentInput = ""
-local aiResponse = "Jarvis: Edge-to-edge link active."
+local aiResponse = "Jarvis: Neural link and Redstone systems online."
 
--- Professional Keyboard Layout
+-- KEYBOARD LAYOUT
 local layout = {
     {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"},
     {"A", "S", "D", "F", "G", "H", "J", "K", "L"},
@@ -18,99 +19,117 @@ local layout = {
     {"SPACE", "ENTER", "CLEAR"}
 }
 
-function drawUI()
-    -- --- KEYBOARD MONITOR (monitor_3) ---
+-- REDSTONE LOGIC
+function processCommands(response)
+    local text = response:upper()
+    local actionTaken = ""
+    
+    if text:find("TURN ON") or text:find("LIGHTS ON") or text:find("ACTIVATING") then
+        redstone.setOutput(LAMP_SIDE, true)
+        actionTaken = " [SYSTEM: REDSTONE HIGH]"
+    elseif text:find("TURN OFF") or text:find("LIGHTS OFF") or text:find("DEACTIVATING") then
+        redstone.setOutput(LAMP_SIDE, false)
+        actionTaken = " [SYSTEM: REDSTONE LOW]"
+    end
+    return actionTaken
+end
+
+-- UI DRAWING
+function displayWrap(text)
+    dispMon.clear()
+    dispMon.setCursorPos(1, 1)
+    local w, h = dispMon.getSize()
+    local x, y = 1, 1
+    for word in text:gmatch("%S+") do
+        if x + #word > w then x = 1 y = y + 1 end
+        if y <= h then
+            dispMon.setCursorPos(x, y)
+            dispMon.write(word .. " ")
+            x = x + #word + 1
+        end
+    end
+end
+
+function drawKeyboard()
     kbMon.clear()
     local kw, kh = kbMon.getSize()
+    local btnW = math.floor(kw / 10)
     
-    -- Header: Centered Typing Preview
+    -- Input Header
     kbMon.setCursorPos(math.floor(kw/2 - 10), 2)
     kbMon.setTextColor(colors.yellow)
-    kbMon.write("TYPING: " .. currentInput .. "_")
+    kbMon.write("CMD> " .. currentInput .. "_")
 
-    -- Rows: Drawing Keys to fill 4 blocks of width
     for r, row in ipairs(layout) do
-        local numKeys = #row
-        local btnWidth = math.floor(kw / numKeys) 
-        local yPos = r + 4 -- Vertical padding
-
+        local rowBtnW = math.floor(kw / #row)
         for c, key in ipairs(row) do
-            local xPos = (c - 1) * btnWidth + 1
-            
-            -- Draw the Separator
-            kbMon.setCursorPos(xPos, yPos)
+            local x = (c - 1) * rowBtnW + 1
+            local y = r + 4
+            kbMon.setCursorPos(x, y)
             kbMon.setTextColor(colors.gray)
             kbMon.write(".") 
             
-            -- Apply Colors to Keys
             if key == "ENTER" then kbMon.setTextColor(colors.green)
             elseif key == "CLEAR" or key == "BS" then kbMon.setTextColor(colors.red)
             else kbMon.setTextColor(colors.white) end
             
-            -- Center the Letter/Word inside the calculated button width
-            local textOffset = math.floor((btnWidth - #key) / 2)
-            kbMon.setCursorPos(xPos + textOffset, yPos)
+            local offset = math.floor((rowBtnW - #key) / 2)
+            kbMon.setCursorPos(x + offset, y)
             kbMon.write(key)
         end
     end
-
-    -- --- DISPLAY MONITOR (monitor_5) ---
-    dispMon.clear()
-    dispMon.setCursorPos(1,1)
-    dispMon.setTextColor(colors.cyan)
-    
-    local dw, dh = dispMon.getSize()
-    local line = 1
-    for i = 1, #aiResponse, dw do
-        if line <= dh then
-            dispMon.setCursorPos(1, line)
-            dispMon.write(aiResponse:sub(i, i + dw - 1))
-            line = line + 1
-        end
-    end
 end
 
--- Detection math must match the drawing math exactly
-function getKeyAt(tx, ty)
-    local kw, kh = kbMon.getSize()
-    local rIdx = ty - 4
-    if layout[rIdx] then
-        local numKeys = #layout[rIdx]
-        local btnWidth = math.floor(kw / numKeys)
-        local cIdx = math.floor((tx - 1) / btnWidth) + 1
-        return layout[rIdx][cIdx]
-    end
-    return nil
-end
-
+-- AI CONNECTION
 function askAI(prompt)
-    local payload = { model = "llama3", prompt = prompt, stream = false }
+    -- System instructions tell the AI how to trigger the redstone
+    local systemMsg = "Context: You are Jarvis. You control the base redstone. " ..
+                      "To turn on lights, use the word 'ACTIVATING'. " ..
+                      "To turn them off, use 'DEACTIVATING'. "
+                      
+    local payload = {
+        model = "llama3",
+        prompt = systemMsg .. "\nUser: " .. prompt .. "\nJarvis:",
+        stream = false
+    }
+    
     local res = http.post("http://127.0.0.1:11434/api/generate", textutils.serialiseJSON(payload))
     if res then
         local data = textutils.unserialiseJSON(res.readAll())
         res.close()
         return data.response
     end
-    return "Error: Brain offline."
+    return "Error: Local AI connection lost."
 end
 
-drawUI()
+-- STARTUP
+drawKeyboard()
+displayWrap(aiResponse)
 
+-- MAIN LOOP
 while true do
     local event, side, x, y = os.pullEvent("monitor_touch")
     if side == "monitor_3" then
-        local key = getKeyAt(x, y)
-        if key then
-            if key == "ENTER" then
-                aiResponse = "Jarvis: Thinking..."
-                drawUI()
-                aiResponse = "Jarvis: " .. askAI(currentInput)
-                currentInput = ""
-            elseif key == "BS" then currentInput = currentInput:sub(1, -2)
-            elseif key == "SPACE" then currentInput = currentInput .. " "
-            elseif key == "CLEAR" then currentInput = ""
-            else currentInput = currentInput .. key end
-            drawUI()
+        local rIdx = y - 4
+        if layout[rIdx] then
+            local rowBtnW = math.floor(kbMon.getSize() / #layout[rIdx])
+            local cIdx = math.floor((x - 1) / rowBtnW) + 1
+            local key = layout[rIdx][cIdx]
+            
+            if key then
+                if key == "ENTER" then
+                    displayWrap("Jarvis: Processing...")
+                    local answer = askAI(currentInput)
+                    local note = processCommands(answer)
+                    aiResponse = answer .. note
+                    displayWrap(aiResponse)
+                    currentInput = ""
+                elseif key == "BS" then currentInput = currentInput:sub(1, -2)
+                elseif key == "SPACE" then currentInput = currentInput .. " "
+                elseif key == "CLEAR" then currentInput = ""
+                else currentInput = currentInput .. key end
+                drawKeyboard()
+            end
         end
     end
 end
