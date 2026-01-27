@@ -1,5 +1,5 @@
--- TITAN-X: v7.0 FINAL
--- Updates: Cleaner Text (No Highlights), Start at 50 mB/t
+-- TITAN-X: v8.0 BLACKBOX EDITION
+-- Updates: Crash Fix, Action Log Restored, Red Alert Mode
 
 -- ================= CONFIGURATION =================
 local SAFE_TEMP = 1200         
@@ -22,11 +22,23 @@ local w, h = mon.getSize()
 -- ================= STATE =================
 local scramTriggered = false
 local scramReason = "None"
-local targetBurn = 50.0 -- Default start rate set to 50
+local targetBurn = 50.0 
+local actionLog = {} -- Stores history
 
--- Sync burn rate if reactor is already running
+-- Sync burn rate safely
 local ok, rate = pcall(function() return reactor.getBurnRate() end)
 if ok and rate and rate > 0.1 then targetBurn = rate end
+
+-- ================= LOGGING =================
+local function addLog(msg)
+    local time = os.time()
+    -- Format nice timestamp (optional, keeping it simple for space)
+    table.insert(actionLog, 1, "> " .. msg)
+    -- Keep only last 6 messages
+    if #actionLog > 6 then table.remove(actionLog) end
+end
+
+addLog("System Initialized.")
 
 -- ================= SAFETY TOOLS =================
 local function getVal(func)
@@ -47,8 +59,18 @@ local function formatNum(num)
     return string.format("%.1f", num)
 end
 
--- ================= DRAWING TOOLS =================
+-- CRASH FIX: Safe Scram
+local function safeScram(reason)
+    -- Only scram if active to avoid "reactor must be active" error
+    if reactor.getStatus() then
+        pcall(reactor.scram)
+    end
+    scramTriggered = true
+    scramReason = reason
+    addLog("CRITICAL: " .. reason)
+end
 
+-- ================= DRAWING TOOLS =================
 local function drawBox(x, y, width, height, color)
     mon.setBackgroundColor(color or colors.gray)
     for i = 0, height-1 do
@@ -57,10 +79,9 @@ local function drawBox(x, y, width, height, color)
     end
 end
 
--- New helper to ensure text always has a black background
-local function writeText(x, y, text, color)
+local function writeText(x, y, text, color, bg)
     mon.setCursorPos(x, y)
-    mon.setBackgroundColor(colors.black) -- Fixes the highlighting issue
+    mon.setBackgroundColor(bg or colors.black) 
     mon.setTextColor(color or colors.white)
     mon.write(text)
 end
@@ -73,13 +94,11 @@ local function centerText(y, text, fg, bg)
 end
 
 local function drawBar(x, y, width, percent, color, label)
-    -- Draw Label
     mon.setCursorPos(x, y)
     mon.setBackgroundColor(colors.black)
     mon.setTextColor(colors.white)
     mon.write(label)
     
-    -- Draw Bar Track
     if not percent then percent = 0 end
     if percent < 0 then percent = 0 end
     if percent > 1 then percent = 1 end
@@ -91,42 +110,12 @@ local function drawBar(x, y, width, percent, color, label)
     mon.setBackgroundColor(colors.gray)
     mon.write(string.rep(" ", barW)) 
     
-    -- Draw Bar Fill
     mon.setCursorPos(x, y+1)
     mon.setBackgroundColor(color or colors.blue)
     if filled > 0 then
         mon.write(string.rep(" ", filled))
     end
-    
-    -- Reset background to black immediately to prevent bleed
     mon.setBackgroundColor(colors.black)
-end
-
--- ================= ANIMATION =================
-local function startupAnimation()
-    mon.setTextScale(1)
-    mon.setBackgroundColor(colors.black)
-    mon.clear()
-    
-    centerText(h/2, "SYSTEM INITIALIZING...", colors.cyan, colors.black)
-    sleep(1)
-    
-    mon.setBackgroundColor(colors.gray)
-    mon.clear()
-    centerText(h/2, "LOADING DRIVERS", colors.lime, colors.gray)
-    sleep(0.5)
-    
-    for i = 0, w/2 do
-        mon.setBackgroundColor(colors.black)
-        for y = 1, h do
-            mon.setCursorPos((w/2) - i, y); mon.write(" ")
-            mon.setCursorPos((w/2) + i, y); mon.write(" ")
-        end
-        sleep(0.02)
-    end
-    
-    mon.setTextScale(0.5)
-    w, h = mon.getSize() 
 end
 
 -- ================= BUTTONS =================
@@ -164,67 +153,71 @@ local function drawGUI()
     if m_max <= 0 then m_max = 1 end
 
     -- 2. Safety Logic
-    local isDanger = false
-    if r_damage > 0 then isDanger = true; scramReason = "DAMAGE" end
-    if r_temp >= SAFE_TEMP then isDanger = true; scramReason = "OVERHEAT" end
-    if r_waste >= MAX_WASTE then isDanger = true; scramReason = "WASTE FULL" end
-    if r_cool < MIN_COOLANT then isDanger = true; scramReason = "NO COOLANT" end
-
-    if isDanger then
-        reactor.scram()
-        scramTriggered = true
+    if not scramTriggered then
+        if r_damage > 0 then safeScram("DAMAGE DETECTED") end
+        if r_temp >= SAFE_TEMP then safeScram("OVERHEAT: " .. math.floor(r_temp).."K") end
+        if r_waste >= MAX_WASTE then safeScram("WASTE FULL") end
+        if r_cool < MIN_COOLANT then safeScram("LOSS OF COOLANT") end
     end
 
     -- 3. Render
     mon.setBackgroundColor(colors.black)
-    -- We don't clear() every frame to avoid flicker, just overwrite areas
-
-    -- Header
-    drawBox(1, 1, w, 3, colors.blue)
-    centerText(2, "TITAN-X :: COMMAND", colors.white, colors.blue)
+    
+    -- ALERT MODE: Change Header Color
+    local headColor = colors.blue
+    if scramTriggered then headColor = colors.red end
+    
+    drawBox(1, 1, w, 3, headColor)
+    if scramTriggered then
+        centerText(2, "!!! MELTDOWN PREVENTED !!!", colors.yellow, headColor)
+    else
+        centerText(2, "TITAN-X :: COMMAND", colors.white, headColor)
+    end
 
     -- LEFT COLUMN: REACTOR
     writeText(2, 5, "REACTOR", colors.cyan)
     
     local tempC = (r_temp > 1000) and colors.red or colors.cyan
-    drawBar(2, 7, 24, r_temp/SAFE_TEMP, tempC, "Temp: " .. math.floor(r_temp) .. " K")
+    drawBar(2, 7, 20, r_temp/SAFE_TEMP, tempC, "Temp: " .. math.floor(r_temp) .. " K")
     
     local coolC = (r_cool < 0.2) and colors.red or colors.lime
-    drawBar(2, 10, 24, r_cool, coolC, "Coolant: " .. math.floor(r_cool*100) .. "%")
+    drawBar(2, 10, 20, r_cool, coolC, "Coolant: " .. math.floor(r_cool*100) .. "%")
     
     local wasteC = (r_waste > 0.8) and colors.orange or colors.magenta
-    drawBar(2, 13, 24, r_waste, wasteC, "Waste: " .. math.floor(r_waste*100) .. "%")
+    drawBar(2, 13, 20, r_waste, wasteC, "Waste: " .. math.floor(r_waste*100) .. "%")
 
     writeText(2, 16, "Burn Rate: ", colors.lightGray)
     writeText(13, 16, r_burn .. " mB/t", colors.white)
 
-    -- RIGHT COLUMN: POWER
-    local col2 = 30
-    writeText(col2, 5, "GRID STATS", colors.yellow)
+    -- RIGHT COLUMN: LOGS & POWER
+    local col2 = 28
     
-    writeText(col2, 7, "Turbine:", colors.lightGray)
-    writeText(col2+9, 7, formatNum(t_prod).." FE/t", colors.lime)
-    
-    local matPct = m_eng / m_max
-    drawBar(col2, 9, 24, matPct, colors.green, "Matrix: "..math.floor(matPct*100).."%")
-    
-    writeText(col2, 12, "Store: ", colors.lightGray)
-    writeText(col2+7, 12, formatNum(m_eng).." FE", colors.white)
-    
-    writeText(col2, 13, "Input: ", colors.lightGray)
-    writeText(col2+7, 13, formatNum(m_in).." FE/t", colors.green)
-    
-    writeText(col2, 14, "Output:", colors.lightGray)
-    writeText(col2+8, 14, formatNum(m_out).." FE/t", colors.red)
-
-    -- STATUS TEXT
-    if scramTriggered then
-        writeText(col2, 16, "SCRAM: " .. scramReason, colors.red)
-    elseif r_status then
-        writeText(col2, 16, "SYSTEM ONLINE   ", colors.lime)
-    else
-        writeText(col2, 16, "SYSTEM IDLE     ", colors.orange)
+    -- LOG WINDOW (The "History Part")
+    writeText(col2, 5, "EVENT LOG", colors.lightGray)
+    for i, msg in ipairs(actionLog) do
+        local yPos = 6 + i
+        if yPos < 14 then -- Safety clip
+            -- Color code logs
+            local logColor = colors.gray
+            if string.find(msg, "CRITICAL") then logColor = colors.red 
+            elseif string.find(msg, "Rate") then logColor = colors.white
+            elseif string.find(msg, "Start") then logColor = colors.lime
+            end
+            
+            mon.setCursorPos(col2, yPos)
+            mon.setBackgroundColor(colors.black)
+            mon.setTextColor(logColor)
+            mon.clearLine() -- Clear old text
+            mon.setCursorPos(col2, yPos)
+            mon.write(msg)
+        end
     end
+
+    -- Quick Grid Stats (Compressed)
+    writeText(col2, 14, "Grid: ", colors.yellow)
+    writeText(col2+6, 14, formatNum(m_eng).." ("..math.floor((m_eng/m_max)*100).."%)", colors.green)
+    writeText(col2, 15, "Prod: ", colors.yellow)
+    writeText(col2+6, 15, formatNum(t_prod).." FE/t", colors.lime)
 
     -- CONTROLS
     local bY = h - 4
@@ -248,19 +241,40 @@ local function handleTouch(x, y)
             
             if name == "start" then
                 if not scramTriggered then
-                    reactor.activate()
+                    if not reactor.getStatus() then
+                        reactor.activate()
+                        addLog("System Started")
+                    end
                     reactor.setBurnRate(targetBurn)
+                else
+                    addLog("ERR: CLEAR SCRAM")
                 end
             elseif name == "stop" then
-                reactor.scram()
-                scramTriggered = false
-            elseif name == "p10" then targetBurn = targetBurn + 10
-            elseif name == "p25" then targetBurn = targetBurn + 25
-            elseif name == "m10" then targetBurn = targetBurn - 10
-            elseif name == "m25" then targetBurn = targetBurn - 25
+                if reactor.getStatus() then
+                    reactor.scram()
+                    addLog("Manual Stop")
+                end
+                scramTriggered = false -- Reset alarm state
+                scramReason = "None"
+                addLog("Alarms Cleared")
+            elseif name == "p10" then 
+                targetBurn = targetBurn + 10
+                addLog("Rate set: " .. targetBurn)
+            elseif name == "p25" then 
+                targetBurn = targetBurn + 25
+                addLog("Rate set: " .. targetBurn)
+            elseif name == "m10" then 
+                targetBurn = targetBurn - 10
+                addLog("Rate set: " .. targetBurn)
+            elseif name == "m25" then 
+                targetBurn = targetBurn - 25
+                addLog("Rate set: " .. targetBurn)
             end
             
+            -- Bounds check
             if targetBurn < 0.1 then targetBurn = 0.1 end
+            
+            -- Apply immediately if running
             if name ~= "stop" and name ~= "start" then
                 reactor.setBurnRate(targetBurn)
             end
@@ -270,7 +284,11 @@ local function handleTouch(x, y)
 end
 
 -- ================= RUN =================
-startupAnimation()
+-- Boot Animation (Shortened)
+mon.setBackgroundColor(colors.black)
+mon.clear()
+centerText(h/2, "SYSTEM RECOVERED", colors.lime, colors.black)
+sleep(1)
 
 local function loopGUI()
     while true do
