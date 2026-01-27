@@ -1,40 +1,49 @@
 local monitor = peripheral.find("monitor")
-if not monitor then error("No monitor found! Check your wired connection.") end
+if not monitor then error("No monitor found!") end
 
-monitor.setTextScale(0.5)
+-- 1. INCREASE SCALE (Set to 1 or 2 for giant buttons)
+monitor.setTextScale(1) 
+monitor.clear()
+
 local w, h = monitor.getSize()
 local currentInput = ""
-local aiResponse = "Waiting for input..."
+local aiResponse = "Jarvis: Ready for input..."
 
--- Define Keyboard Layout
+-- Keyboard Layout (Added SPACE)
 local layout = {
     {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"},
     {"A", "S", "D", "F", "G", "H", "J", "K", "L"},
-    {"Z", "X", "C", "V", "B", "N", "M", "BS", "ENT"}
+    {"Z", "X", "C", "V", "B", "N", "M", "BS"},
+    {"SPACE", "ENT", "CLR"} -- Big control buttons
 }
 
 function drawUI()
     monitor.clear()
-    -- Draw AI Response Area (Top)
-    monitor.setCursorPos(1,1)
+    
+    -- Draw Response Area (Top)
+    monitor.setCursorPos(1, 1)
     monitor.setTextColor(colors.cyan)
-    monitor.write("Jarvis: " .. aiResponse:sub(1, w * 5)) -- Basic wrap/cut
+    monitor.write(aiResponse:sub(1, w * 3))
 
-    -- Draw Current Input Line
-    monitor.setCursorPos(1, h - 5)
+    -- Draw Input Bar
+    monitor.setCursorPos(1, h - 6)
     monitor.setTextColor(colors.yellow)
     monitor.write("> " .. currentInput .. "_")
 
-    -- Draw Keyboard
+    -- Draw Keyboard Grid
     monitor.setTextColor(colors.white)
-    for rowIdx, row in ipairs(layout) do
-        for colIdx, key in ipairs(row) do
-            monitor.setCursorPos(colIdx * 3, h - 4 + rowIdx)
+    for r, row in ipairs(layout) do
+        for c, key in ipairs(row) do
+            -- Larger spacing: 4 characters per button
+            local xPos = (c - 1) * 5 + 1
+            local yPos = (h - 5) + r
+            monitor.setCursorPos(xPos, yPos)
             monitor.write("[" .. key .. "]")
         end
     end
 end
 
+-- Your Ollama Connection
 function askAI(prompt)
     local payload = { model = "llama3", prompt = prompt, stream = false }
     local res = http.post("http://127.0.0.1:11434/api/generate", textutils.serialiseJSON(payload))
@@ -43,21 +52,21 @@ function askAI(prompt)
         res.close()
         return data.response
     end
-    return "Error: Local AI not reached."
+    return "Error: Local AI offline."
 end
 
--- Start
 drawUI()
 
 while true do
     local event, side, x, y = os.pullEvent("monitor_touch")
     
-    -- Check which key was hit (simplistic coordinate mapping)
-    local row = y - (h - 4)
-    local col = math.floor(x / 3)
+    -- Improved Touch Detection Logic
+    local rowIdx = y - (h - 5)
+    local colIdx = math.ceil(x / 5)
     
-    if layout[row] and layout[row][col] then
-        local key = layout[row][col]
+    if layout[rowIdx] and layout[rowIdx][colIdx] then
+        local key = layout[rowIdx][colIdx]
+        
         if key == "ENT" then
             aiResponse = "Thinking..."
             drawUI()
@@ -65,6 +74,10 @@ while true do
             currentInput = ""
         elseif key == "BS" then
             currentInput = currentInput:sub(1, -2)
+        elseif key == "SPACE" then
+            currentInput = currentInput .. " "
+        elseif key == "CLR" then
+            currentInput = ""
         else
             currentInput = currentInput .. key
         end
