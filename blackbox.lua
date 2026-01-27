@@ -1,32 +1,42 @@
-local apiKey = "YOUR_OPENAI_API_KEY"
-local url = "https://api.openai.com/v1/chat/completions"
+-- JARVIS: LOCAL AI BASE COMMANDER
+local ollama_url = "http://127.0.0.1:11434/api/generate"
+local monitor = peripheral.find("monitor") -- Optional: set up a big screen!
 
-print("AI Terminal Initialized. Ask me anything:")
+print("Connecting to Llama 3...")
 
-while true do
-    term.setTextColor(colors.yellow)
-    write("> ")
-    local input = read()
-    
-    local headers = {
-        ["Content-Type"] = "application/json",
-        ["Authorization"] = "Bearer " .. apiKey
+function askAI(question)
+    local payload = {
+        model = "llama3",
+        prompt = question,
+        stream = false
     }
     
-    local body = textutils.serialiseJSON({
-        model = "gpt-3.5-turbo", -- or gpt-4
-        messages = {{role = "user", content = input}}
-    })
-
-    print("Thinking...")
-    local response = http.post(url, body, headers)
+    local response = http.post(ollama_url, textutils.serialiseJSON(payload))
     
     if response then
         local data = textutils.unserialiseJSON(response.readAll())
         response.close()
-        term.setTextColor(colors.white)
-        print(data.choices[1].message.content)
+        return data.response
     else
-        print("Error: Could not reach the AI.")
+        return "Error: Cannot reach Ollama. Is OLLAMA_HOST set?"
+    end
+end
+
+while true do
+    term.setTextColor(colors.cyan)
+    write("\nJarvis > ")
+    local input = read()
+    
+    print("Processing...")
+    local answer = askAI(input)
+    
+    term.setTextColor(colors.white)
+    print("\n" .. answer)
+    
+    -- If you have a monitor, show it there too!
+    if monitor then
+        monitor.clear()
+        monitor.setCursorPos(1,1)
+        monitor.write(answer)
     end
 end
