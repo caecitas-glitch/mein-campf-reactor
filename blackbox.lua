@@ -1,19 +1,19 @@
--- JARVIS v3.0 - Dual Monitor / Scaled Keyboard
+-- JARVIS v4.0 - Edge-to-Edge Keyboard Layout
 local kbMon = peripheral.wrap("monitor_3")   -- Touchscreen keyboard
 local dispMon = peripheral.wrap("monitor_5") -- AI response display
 
 if not kbMon or not dispMon then 
-    error("Monitors not found! Check monitor_3 and monitor_5.") 
+    error("Check monitor connections! monitor_3 and monitor_5 required.") 
 end
 
--- Force Scale 1 for clarity
+-- Set scale to 1 for a balanced look on a 3x2 monitor
 kbMon.setTextScale(1)
 dispMon.setTextScale(1)
 
 local currentInput = ""
-local aiResponse = "Jarvis: Neural link active."
+local aiResponse = "Jarvis: Ready for command."
 
--- Layout with Spacebar and Utility keys
+-- Keyboard Layout
 local layout = {
     {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"},
     {"A", "S", "D", "F", "G", "H", "J", "K", "L"},
@@ -22,34 +22,43 @@ local layout = {
 }
 
 function drawUI()
-    -- --- KEYBOARD MONITOR (monitor_3) ---
+    -- --- KEYBOARD (monitor_3) ---
     kbMon.clear()
     local kw, kh = kbMon.getSize()
     
-    -- SHRINK LOGIC: Center the keyboard with 50% width and height padding
-    local btnW = math.floor((kw / 10) * 0.6) -- 60% of original width
-    local xOffset = math.floor(kw * 0.2)     -- 20% left padding
-    local yOffset = math.floor(kh * 0.4)     -- 40% top padding
+    -- Calculate width for 10 keys across the whole monitor
+    local btnW = math.floor(kw / 10)
+    local yStart = 4 -- Starts lower to leave room for the input line
 
-    kbMon.setCursorPos(xOffset, yOffset - 2)
+    -- Draw Input Bar at the top of the keyboard monitor
+    kbMon.setCursorPos(2, 2)
     kbMon.setTextColor(colors.yellow)
     kbMon.write("TYPING: " .. currentInput .. "_")
 
     for r, row in ipairs(layout) do
+        -- For the last row (special keys), we space them differently
+        local rowCount = #row
+        local rowBtnW = math.floor(kw / rowCount)
+
         for c, key in ipairs(row) do
-            local x = (c - 1) * btnW + xOffset
-            local y = r + yOffset
+            local x = (c - 1) * rowBtnW + 1
+            local y = r + yStart
             
             kbMon.setCursorPos(x, y)
+            
+            -- Styling with '.' as a separator for a mechanical look
+            kbMon.setTextColor(colors.gray)
+            kbMon.write(".") 
+            
             if key == "ENTER" then kbMon.setTextColor(colors.green)
             elseif key == "CLEAR" or key == "BS" then kbMon.setTextColor(colors.red)
             else kbMon.setTextColor(colors.white) end
             
-            kbMon.write("[" .. key .. "]")
+            kbMon.write(key)
         end
     end
 
-    -- --- DISPLAY MONITOR (monitor_5) ---
+    -- --- DISPLAY (monitor_5) ---
     dispMon.clear()
     dispMon.setCursorPos(1,1)
     dispMon.setTextColor(colors.cyan)
@@ -73,7 +82,7 @@ function askAI(prompt)
         res.close()
         return data.response
     end
-    return "Error: Brain offline."
+    return "Error: Local AI offline."
 end
 
 drawUI()
@@ -83,27 +92,28 @@ while true do
     
     if side == "monitor_3" then
         local kw, kh = kbMon.getSize()
-        local btnW = math.floor((kw / 10) * 0.6)
-        local xOffset = math.floor(kw * 0.2)
-        local yOffset = math.floor(kh * 0.4)
+        local yStart = 4
+        local rIdx = y - yStart
         
-        -- Inverse math to find the key from coordinates
-        local cIdx = math.floor((x - xOffset) / btnW) + 1
-        local rIdx = y - yOffset
-        
-        local key = layout[rIdx] and layout[rIdx][cIdx]
-        
-        if key then
-            if key == "ENTER" then
-                aiResponse = "Jarvis: Thinking..."
+        if layout[rIdx] then
+            local rowCount = #layout[rIdx]
+            local rowBtnW = math.floor(kw / rowCount)
+            local cIdx = math.floor((x - 1) / rowBtnW) + 1
+            
+            local key = layout[rIdx][cIdx]
+            
+            if key then
+                if key == "ENTER" then
+                    aiResponse = "Jarvis: Thinking..."
+                    drawUI()
+                    aiResponse = "Jarvis: " .. askAI(currentInput)
+                    currentInput = ""
+                elseif key == "BS" then currentInput = currentInput:sub(1, -2)
+                elseif key == "SPACE" then currentInput = currentInput .. " "
+                elseif key == "CLEAR" then currentInput = ""
+                else currentInput = currentInput .. key end
                 drawUI()
-                aiResponse = "Jarvis: " .. askAI(currentInput)
-                currentInput = ""
-            elseif key == "BS" then currentInput = currentInput:sub(1, -2)
-            elseif key == "SPACE" then currentInput = currentInput .. " "
-            elseif key == "CLEAR" then currentInput = ""
-            else currentInput = currentInput .. key end
-            drawUI()
+            end
         end
     end
 end
