@@ -1,19 +1,19 @@
--- Configuration
+-- JARVIS v3.0 - Dual Monitor / Scaled Keyboard
 local kbMon = peripheral.wrap("monitor_3")   -- Touchscreen keyboard
 local dispMon = peripheral.wrap("monitor_5") -- AI response display
 
 if not kbMon or not dispMon then 
-    error("Monitor missing! Ensure monitor_3 and monitor_5 are connected.") 
+    error("Monitors not found! Check monitor_3 and monitor_5.") 
 end
 
--- Force Scale 1 for better visibility on large ATM10 walls
+-- Force Scale 1 for clarity
 kbMon.setTextScale(1)
 dispMon.setTextScale(1)
 
 local currentInput = ""
-local aiResponse = "Jarvis: Neural link established on monitor_5."
+local aiResponse = "Jarvis: Neural link active."
 
--- Full-width Keyboard Layout
+-- Layout with Spacebar and Utility keys
 local layout = {
     {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"},
     {"A", "S", "D", "F", "G", "H", "J", "K", "L"},
@@ -22,21 +22,25 @@ local layout = {
 }
 
 function drawUI()
-    -- Draw Keyboard (monitor_3)
+    -- --- KEYBOARD MONITOR (monitor_3) ---
     kbMon.clear()
     local kw, kh = kbMon.getSize()
-    local btnW = math.floor(kw / 10)
     
-    kbMon.setCursorPos(1, 1)
+    -- SHRINK LOGIC: Center the keyboard with 50% width and height padding
+    local btnW = math.floor((kw / 10) * 0.6) -- 60% of original width
+    local xOffset = math.floor(kw * 0.2)     -- 20% left padding
+    local yOffset = math.floor(kh * 0.4)     -- 40% top padding
+
+    kbMon.setCursorPos(xOffset, yOffset - 2)
     kbMon.setTextColor(colors.yellow)
     kbMon.write("TYPING: " .. currentInput .. "_")
 
     for r, row in ipairs(layout) do
         for c, key in ipairs(row) do
-            local x = (c - 1) * btnW + 1
-            local y = kh - 5 + r
-            kbMon.setCursorPos(x, y)
+            local x = (c - 1) * btnW + xOffset
+            local y = r + yOffset
             
+            kbMon.setCursorPos(x, y)
             if key == "ENTER" then kbMon.setTextColor(colors.green)
             elseif key == "CLEAR" or key == "BS" then kbMon.setTextColor(colors.red)
             else kbMon.setTextColor(colors.white) end
@@ -45,14 +49,13 @@ function drawUI()
         end
     end
 
-    -- Draw Display (monitor_5)
+    -- --- DISPLAY MONITOR (monitor_5) ---
     dispMon.clear()
-    dispMon.setCursorPos(1, 1)
+    dispMon.setCursorPos(1,1)
     dispMon.setTextColor(colors.cyan)
     
     local dw, dh = dispMon.getSize()
     local line = 1
-    -- Text wrapping for the response display
     for i = 1, #aiResponse, dw do
         if line <= dh then
             dispMon.setCursorPos(1, line)
@@ -70,26 +73,29 @@ function askAI(prompt)
         res.close()
         return data.response
     end
-    return "Error: Could not reach Llama 3."
+    return "Error: Brain offline."
 end
 
 drawUI()
 
 while true do
-    -- Only capture touches from the keyboard monitor
     local event, side, x, y = os.pullEvent("monitor_touch")
     
     if side == "monitor_3" then
         local kw, kh = kbMon.getSize()
-        local btnW = math.floor(kw / 10)
-        local rIdx = y - (kh - 5)
-        local cIdx = math.floor((x - 1) / btnW) + 1
+        local btnW = math.floor((kw / 10) * 0.6)
+        local xOffset = math.floor(kw * 0.2)
+        local yOffset = math.floor(kh * 0.4)
+        
+        -- Inverse math to find the key from coordinates
+        local cIdx = math.floor((x - xOffset) / btnW) + 1
+        local rIdx = y - yOffset
         
         local key = layout[rIdx] and layout[rIdx][cIdx]
         
         if key then
             if key == "ENTER" then
-                aiResponse = "Jarvis: Processing..."
+                aiResponse = "Jarvis: Thinking..."
                 drawUI()
                 aiResponse = "Jarvis: " .. askAI(currentInput)
                 currentInput = ""
