@@ -1,5 +1,5 @@
--- TITAN-X: STABLE + MATRIX EDITION
--- Features: Crash protection, Matrix support, Advanced Rate Controls
+-- TITAN-X: v6.0 FINAL
+-- Features: Animation, Matrix, Safety, New Buttons
 
 -- ================= CONFIGURATION =================
 local SAFE_TEMP = 1200         
@@ -10,7 +10,7 @@ local REFRESH_RATE = 0.5
 -- ================= PERIPHERALS =================
 local reactor = peripheral.find("fissionReactorLogicAdapter")
 local turbine = peripheral.find("turbineValve")
-local matrix  = peripheral.find("inductionPort") -- Matrix is back!
+local matrix  = peripheral.find("inductionPort") 
 local mon     = peripheral.find("monitor")
 
 if not reactor then error("No Reactor Adapter found!") end
@@ -24,22 +24,24 @@ local scramTriggered = false
 local scramReason = "None"
 local targetBurn = 0.1
 
--- Sync burn rate on startup
-local success, currentRate = pcall(reactor.getBurnRate)
-if success and currentRate then targetBurn = currentRate end
+-- Sync burn rate safely
+local ok, rate = pcall(function() return reactor.getBurnRate() end)
+if ok and rate then targetBurn = rate end
 
 -- ================= SAFETY TOOLS =================
--- Prevents "attempt to call nil" or "number expected" errors
+-- These prevent the "number expected, got nil" error
 
 local function getVal(func)
     if not func then return 0 end
-    local ok, ret = pcall(func)
-    if ok and ret then return ret end
-    return 0
+    local success, result = pcall(func)
+    if success and result then 
+        return tonumber(result) or 0 
+    end
+    return 0 -- Always return 0 on failure
 end
 
 local function formatNum(num)
-    if not num then return "0" end
+    if not num then num = 0 end
     if num >= 1e12 then return string.format("%.2f T", num/1e12) end
     if num >= 1e9 then return string.format("%.2f G", num/1e9) end
     if num >= 1e6 then return string.format("%.2f M", num/1e6) end
@@ -50,8 +52,7 @@ end
 -- ================= DRAWING TOOLS =================
 
 local function drawBox(x, y, width, height, color)
-    if not color then color = colors.gray end
-    mon.setBackgroundColor(color)
+    mon.setBackgroundColor(color or colors.gray)
     for i = 0, height-1 do
         mon.setCursorPos(x, y + i)
         mon.write(string.rep(" ", width))
@@ -59,11 +60,9 @@ local function drawBox(x, y, width, height, color)
 end
 
 local function centerText(y, text, fg, bg)
-    if not fg then fg = colors.white end
-    if not bg then bg = colors.black end
     mon.setCursorPos(math.ceil((w - #text) / 2), y)
-    mon.setTextColor(fg)
-    mon.setBackgroundColor(bg)
+    mon.setTextColor(fg or colors.white)
+    mon.setBackgroundColor(bg or colors.black)
     mon.write(text)
 end
 
@@ -73,11 +72,11 @@ local function drawBar(x, y, width, percent, color, label)
     mon.setTextColor(colors.white)
     mon.write(label)
     
+    -- Strict safety limits
     if not percent then percent = 0 end
     if percent < 0 then percent = 0 end
     if percent > 1 then percent = 1 end
-    if not color then color = colors.blue end 
-
+    
     local barW = width
     local filled = math.floor(percent * barW)
     
@@ -86,28 +85,59 @@ local function drawBar(x, y, width, percent, color, label)
     mon.write(string.rep(" ", barW)) 
     
     mon.setCursorPos(x, y+1)
-    mon.setBackgroundColor(color)
+    mon.setBackgroundColor(color or colors.blue)
     if filled > 0 then
         mon.write(string.rep(" ", filled))
     end
 end
 
--- ================= BUTTONS LOGIC =================
--- We define button zones here so we can check clicks easily
-local buttons = {}
+-- ================= ANIMATION =================
+local function startupAnimation()
+    mon.setTextScale(1)
+    mon.setBackgroundColor(colors.black)
+    mon.clear()
+    
+    centerText(h/2, "SYSTEM INITIALIZING...", colors.cyan, colors.black)
+    sleep(1)
+    
+    -- Blast Door Effect
+    mon.setBackgroundColor(colors.gray)
+    mon.clear()
+    centerText(h/2, "LOADING DRIVERS", colors.lime, colors.gray)
+    sleep(0.5)
+    
+    -- Open "Doors"
+    for i = 0, w/2 do
+        mon.setBackgroundColor(colors.black)
+        -- Clear from center out
+        for y = 1, h do
+            mon.setCursorPos((w/2) - i, y); mon.write(" ")
+            mon.setCursorPos((w/2) + i, y); mon.write(" ")
+        end
+        sleep(0.02)
+    end
+    
+    mon.setTextScale(0.5)
+    -- Refresh size after scale change
+    w, h = mon.getSize() 
+end
 
+-- ================= BUTTONS =================
+local buttons = {}
 local function drawButton(name, x, y, width, height, color, label, textColor)
     drawBox(x, y, width, height, color)
     mon.setTextColor(textColor or colors.black)
-    mon.setCursorPos(x + math.floor((width - #label)/2), y + math.floor(height/2))
+    -- Center text in button
+    local tx = x + math.floor((width - #label)/2)
+    local ty = y + math.floor(height/2)
+    mon.setCursorPos(tx, ty)
     mon.write(label)
     buttons[name] = {x=x, y=y, w=width, h=height}
 end
 
 -- ================= MAIN UI =================
-
 local function drawGUI()
-    -- 1. Gather Data 
+    -- 1. Get Data (Safe Mode)
     local r_status = getVal(reactor.getStatus)
     local r_temp   = getVal(reactor.getTemperature)
     local r_cool   = getVal(reactor.getCoolantFilledPercentage)
@@ -125,9 +155,9 @@ local function drawGUI()
         m_in  = getVal(matrix.getLastInput)
         m_out = getVal(matrix.getLastOutput)
     end
-    if m_max == 0 then m_max = 1 end
+    if m_max <= 0 then m_max = 1 end
 
-    -- 2. Safety Check
+    -- 2. Safety Logic
     local isDanger = false
     if r_damage > 0 then isDanger = true; scramReason = "DAMAGE" end
     if r_temp >= SAFE_TEMP then isDanger = true; scramReason = "OVERHEAT" end
@@ -143,50 +173,48 @@ local function drawGUI()
     mon.setBackgroundColor(colors.black)
     mon.clear()
 
-    -- HEADER
+    -- Header
     drawBox(1, 1, w, 3, colors.blue)
-    centerText(2, "TITAN-X :: CORE & MATRIX", colors.white, colors.blue)
+    centerText(2, "TITAN-X :: COMMAND", colors.white, colors.blue)
 
-    -- LEFT COL: REACTOR
-    mon.setCursorPos(2, 5); mon.setTextColor(colors.cyan); mon.setBackgroundColor(colors.black); mon.write("REACTOR STATUS")
+    -- REACTOR PANEL
+    mon.setCursorPos(2, 5); mon.setTextColor(colors.cyan); mon.setBackgroundColor(colors.black); mon.write("REACTOR")
     
-    local tempColor = (r_temp > 1000) and colors.red or colors.cyan
-    drawBar(2, 7, 24, r_temp/SAFE_TEMP, tempColor, "Temp: " .. math.floor(r_temp) .. " K")
+    local tempC = (r_temp > 1000) and colors.red or colors.cyan
+    drawBar(2, 7, 24, r_temp/SAFE_TEMP, tempC, "Temp: " .. math.floor(r_temp) .. " K")
     
-    local coolColor = (r_cool < 0.2) and colors.red or colors.lime
-    drawBar(2, 10, 24, r_cool, coolColor, "Coolant: " .. math.floor(r_cool*100) .. "%")
+    local coolC = (r_cool < 0.2) and colors.red or colors.lime
+    drawBar(2, 10, 24, r_cool, coolC, "Coolant: " .. math.floor(r_cool*100) .. "%")
     
-    local wasteColor = (r_waste > 0.8) and colors.orange or colors.magenta
-    drawBar(2, 13, 24, r_waste, wasteColor, "Waste: " .. math.floor(r_waste*100) .. "%")
-    
-    mon.setCursorPos(2, 16); mon.setTextColor(colors.lightGray); mon.write("Actual Rate: ")
+    local wasteC = (r_waste > 0.8) and colors.orange or colors.magenta
+    drawBar(2, 13, 24, r_waste, wasteC, "Waste: " .. math.floor(r_waste*100) .. "%")
+
+    mon.setCursorPos(2, 16); mon.setTextColor(colors.lightGray); mon.write("Burn: ")
     mon.setTextColor(colors.white); mon.write(r_burn .. " mB/t")
 
-    -- RIGHT COL: POWER
-    local col2X = 30
-    mon.setCursorPos(col2X, 5); mon.setTextColor(colors.yellow); mon.write("POWER GRID")
+    -- POWER PANEL
+    local col2 = 30
+    mon.setCursorPos(col2, 5); mon.setTextColor(colors.yellow); mon.write("GRID STATS")
     
-    -- Turbine
-    mon.setCursorPos(col2X, 7); mon.setTextColor(colors.lightGray); mon.write("Turbine: ")
-    mon.setTextColor(colors.lime); mon.write(formatNum(t_prod) .. " FE/t")
+    mon.setCursorPos(col2, 7); mon.setTextColor(colors.lightGray); mon.write("Turbine:")
+    mon.setTextColor(colors.lime); mon.write(formatNum(t_prod).." FE/t")
     
-    -- Matrix
     local matPct = m_eng / m_max
-    drawBar(col2X, 9, 24, matPct, colors.green, "Matrix: " .. math.floor(matPct*100) .. "%")
+    drawBar(col2, 9, 24, matPct, colors.green, "Matrix: "..math.floor(matPct*100).."%")
     
-    mon.setCursorPos(col2X, 12); mon.setTextColor(colors.lightGray); mon.write("Stored: ")
-    mon.setTextColor(colors.white); mon.write(formatNum(m_eng) .. " FE")
+    mon.setCursorPos(col2, 12); mon.setTextColor(colors.lightGray); mon.write("Store: ")
+    mon.setTextColor(colors.white); mon.write(formatNum(m_eng).." FE")
     
-    mon.setCursorPos(col2X, 13); mon.setTextColor(colors.lightGray); mon.write("Input:  ")
-    mon.setTextColor(colors.green); mon.write(formatNum(m_in) .. " FE/t")
+    mon.setCursorPos(col2, 13); mon.setTextColor(colors.lightGray); mon.write("Input: ")
+    mon.setTextColor(colors.green); mon.write(formatNum(m_in).." FE/t")
     
-    mon.setCursorPos(col2X, 14); mon.setTextColor(colors.lightGray); mon.write("Output: ")
-    mon.setTextColor(colors.red); mon.write(formatNum(m_out) .. " FE/t")
+    mon.setCursorPos(col2, 14); mon.setTextColor(colors.lightGray); mon.write("Output:")
+    mon.setTextColor(colors.red); mon.write(formatNum(m_out).." FE/t")
 
-    -- SYSTEM STATUS TEXT
-    mon.setCursorPos(col2X, 16)
+    -- STATUS
+    mon.setCursorPos(col2, 16)
     if scramTriggered then
-        mon.setTextColor(colors.red); mon.write("SCRAMMED: " .. scramReason)
+        mon.setTextColor(colors.red); mon.write("SCRAM: " .. scramReason)
     elseif r_status then
         mon.setTextColor(colors.lime); mon.write("SYSTEM ONLINE")
     else
@@ -195,27 +223,25 @@ local function drawGUI()
 
     -- CONTROLS
     local bY = h - 4
-    -- Target Display
     mon.setCursorPos(2, bY)
     mon.setTextColor(colors.cyan)
-    mon.write("TARGET BURN: " .. targetBurn .. " mB/t")
+    mon.write("TARGET: " .. targetBurn .. " mB/t")
     
-    -- Buttons Row 1: Rate
-    drawButton("m25", 2,  bY+1, 5, 3, colors.gray, "-25", colors.white)
-    drawButton("m10", 8,  bY+1, 5, 3, colors.gray, "-10", colors.white)
+    -- Buttons
+    drawButton("m25", 2, bY+1, 5, 3, colors.gray, "-25", colors.white)
+    drawButton("m10", 8, bY+1, 5, 3, colors.gray, "-10", colors.white)
+    
     drawButton("p10", 14, bY+1, 5, 3, colors.gray, "+10", colors.white)
     drawButton("p25", 20, bY+1, 5, 3, colors.gray, "+25", colors.white)
     
-    -- Buttons Row 2: Power
     drawButton("start", 30, bY+1, 8, 3, colors.green, "START", colors.black)
     drawButton("stop",  40, bY+1, 8, 3, colors.red,   "STOP",  colors.white)
 end
 
--- ================= INPUT LOGIC =================
-
+-- ================= INPUT =================
 local function handleTouch(x, y)
-    for name, data in pairs(buttons) do
-        if x >= data.x and x < data.x + data.w and y >= data.y and y < data.y + data.h then
+    for name, b in pairs(buttons) do
+        if x >= b.x and x < b.x + b.w and y >= b.y and y < b.y + b.h then
             
             if name == "start" then
                 if not scramTriggered then
@@ -224,28 +250,24 @@ local function handleTouch(x, y)
                 end
             elseif name == "stop" then
                 reactor.scram()
-                scramTriggered = false -- Reset alarm
-            elseif name == "p10" then
-                targetBurn = targetBurn + 10
-            elseif name == "p25" then
-                targetBurn = targetBurn + 25
-            elseif name == "m10" then
-                targetBurn = math.max(0.1, targetBurn - 10)
-            elseif name == "m25" then
-                targetBurn = math.max(0.1, targetBurn - 25)
+                scramTriggered = false
+            elseif name == "p10" then targetBurn = targetBurn + 10
+            elseif name == "p25" then targetBurn = targetBurn + 25
+            elseif name == "m10" then targetBurn = targetBurn - 10
+            elseif name == "m25" then targetBurn = targetBurn - 25
             end
             
-            -- Apply new rate immediately if running
+            if targetBurn < 0.1 then targetBurn = 0.1 end
             if name ~= "stop" and name ~= "start" then
                 reactor.setBurnRate(targetBurn)
             end
-            
-            return -- Click handled
+            return
         end
     end
 end
 
--- ================= LOOPS =================
+-- ================= RUN =================
+startupAnimation()
 
 local function loopGUI()
     while true do
