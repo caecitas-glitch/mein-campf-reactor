@@ -1,50 +1,61 @@
-local monitor = peripheral.find("monitor")
-if not monitor then error("No monitor found!") end
+-- Jarvis dual-monitor control system
+local kbMon = peripheral.wrap("monitor_3")   -- Touchscreen keyboard
+local dispMon = peripheral.wrap("monitor_4") -- AI response display
 
--- 1. SET THE SCALE (1 is standard, 0.5 is tiny. Try 1 first!)
-monitor.setTextScale(1)
-monitor.clear()
+if not kbMon or not dispMon then 
+    error("One or more monitors not found. Check modem connections!") 
+end
 
-local w, h = monitor.getSize()
+-- Force larger text for easier clicking
+kbMon.setTextScale(1)
+dispMon.setTextScale(1)
+
 local currentInput = ""
-local aiResponse = "Jarvis: Ready for input..."
+local aiResponse = "Jarvis: Dual-link established."
 
--- Keyboard Layout with Spacebar and Utilities
+-- Layout with Spacebar and Utility keys
 local layout = {
     {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"},
     {"A", "S", "D", "F", "G", "H", "J", "K", "L"},
     {"Z", "X", "C", "V", "B", "N", "M", "BS"},
-    {"SPACE", "ENTER", "CLEAR"} 
+    {"SPACE", "ENTER", "CLEAR"}
 }
 
 function drawUI()
-    monitor.clear()
+    -- Draw Keyboard Monitor
+    kbMon.clear()
+    local kw, kh = kbMon.getSize()
+    local btnW = math.floor(kw / 10)
     
-    -- Draw AI Response Area (Top)
-    monitor.setCursorPos(1, 1)
-    monitor.setTextColor(colors.cyan)
-    -- We wrap the text roughly so it stays in the top 60% of the screen
-    print(aiResponse) 
+    kbMon.setCursorPos(1, 1)
+    kbMon.setTextColor(colors.yellow)
+    kbMon.write("INPUT: " .. currentInput .. "_")
 
-    -- Draw Input Bar (Just above the keyboard)
-    monitor.setCursorPos(2, h - 6)
-    monitor.setTextColor(colors.yellow)
-    monitor.write("CMD> " .. currentInput .. "_")
-
-    -- Draw Keyboard Grid
     for r, row in ipairs(layout) do
         for c, key in ipairs(row) do
-            -- Button spacing: 5 characters wide per key
-            local xPos = (c - 1) * 5 + 2
-            local yPos = (h - 5) + r
-            monitor.setCursorPos(xPos, yPos)
-            
-            -- Color code the special keys
-            if key == "ENTER" then monitor.setTextColor(colors.green)
-            elseif key == "CLEAR" or key == "BS" then monitor.setTextColor(colors.red)
-            else monitor.setTextColor(colors.white) end
-            
-            monitor.write("[" .. key .. "]")
+            local x = (c - 1) * btnW + 1
+            local y = kh - 5 + r
+            kbMon.setCursorPos(x, y)
+            if key == "ENTER" then kbMon.setTextColor(colors.green)
+            elseif key == "CLEAR" or key == "BS" then kbMon.setTextColor(colors.red)
+            else kbMon.setTextColor(colors.white) end
+            kbMon.write("[" .. key .. "]")
+        end
+    end
+
+    -- Draw Display Monitor
+    dispMon.clear()
+    dispMon.setCursorPos(1,1)
+    dispMon.setTextColor(colors.cyan)
+    
+    -- Basic text wrapping logic for the main screen
+    local dw, dh = dispMon.getSize()
+    local line = 1
+    for i = 1, #aiResponse, dw do
+        if line <= dh then
+            dispMon.setCursorPos(1, line)
+            dispMon.write(aiResponse:sub(i, i + dw - 1))
+            line = line + 1
         end
     end
 end
@@ -57,35 +68,34 @@ function askAI(prompt)
         res.close()
         return data.response
     end
-    return "Error: Local AI offline."
+    return "Error: Brain offline."
 end
 
 drawUI()
 
 while true do
+    -- Filter touches to ONLY the keyboard monitor (monitor_3)
     local event, side, x, y = os.pullEvent("monitor_touch")
     
-    -- Simplified Touch Detection
-    local rowIdx = y - (h - 5)
-    local colIdx = math.ceil((x - 1) / 5)
-    
-    if layout[rowIdx] and layout[rowIdx][colIdx] then
-        local key = layout[rowIdx][colIdx]
+    if side == "monitor_3" then
+        local kw, kh = kbMon.getSize()
+        local btnW = math.floor(kw / 10)
+        local rIdx = y - (kh - 5)
+        local cIdx = math.floor((x - 1) / btnW) + 1
         
-        if key == "ENTER" then
-            aiResponse = "Thinking..."
+        local key = layout[rIdx] and layout[rIdx][cIdx]
+        
+        if key then
+            if key == "ENTER" then
+                aiResponse = "Jarvis: Thinking..."
+                drawUI()
+                aiResponse = "Jarvis: " .. askAI(currentInput)
+                currentInput = ""
+            elseif key == "BS" then currentInput = currentInput:sub(1, -2)
+            elseif key == "SPACE" then currentInput = currentInput .. " "
+            elseif key == "CLEAR" then currentInput = ""
+            else currentInput = currentInput .. key end
             drawUI()
-            aiResponse = askAI(currentInput)
-            currentInput = ""
-        elseif key == "BS" then
-            currentInput = currentInput:sub(1, -2)
-        elseif key == "SPACE" then
-            currentInput = currentInput .. " "
-        elseif key == "CLEAR" then
-            currentInput = ""
-        else
-            currentInput = currentInput .. key
         end
     end
-    drawUI()
 end
