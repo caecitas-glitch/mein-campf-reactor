@@ -1,5 +1,5 @@
--- TITAN-X: v6.0 FINAL
--- Features: Animation, Matrix, Safety, New Buttons
+-- TITAN-X: v7.0 FINAL
+-- Updates: Cleaner Text (No Highlights), Start at 50 mB/t
 
 -- ================= CONFIGURATION =================
 local SAFE_TEMP = 1200         
@@ -22,22 +22,20 @@ local w, h = mon.getSize()
 -- ================= STATE =================
 local scramTriggered = false
 local scramReason = "None"
-local targetBurn = 0.1
+local targetBurn = 50.0 -- Default start rate set to 50
 
--- Sync burn rate safely
+-- Sync burn rate if reactor is already running
 local ok, rate = pcall(function() return reactor.getBurnRate() end)
-if ok and rate then targetBurn = rate end
+if ok and rate and rate > 0.1 then targetBurn = rate end
 
 -- ================= SAFETY TOOLS =================
--- These prevent the "number expected, got nil" error
-
 local function getVal(func)
     if not func then return 0 end
     local success, result = pcall(func)
     if success and result then 
         return tonumber(result) or 0 
     end
-    return 0 -- Always return 0 on failure
+    return 0 
 end
 
 local function formatNum(num)
@@ -59,6 +57,14 @@ local function drawBox(x, y, width, height, color)
     end
 end
 
+-- New helper to ensure text always has a black background
+local function writeText(x, y, text, color)
+    mon.setCursorPos(x, y)
+    mon.setBackgroundColor(colors.black) -- Fixes the highlighting issue
+    mon.setTextColor(color or colors.white)
+    mon.write(text)
+end
+
 local function centerText(y, text, fg, bg)
     mon.setCursorPos(math.ceil((w - #text) / 2), y)
     mon.setTextColor(fg or colors.white)
@@ -67,12 +73,13 @@ local function centerText(y, text, fg, bg)
 end
 
 local function drawBar(x, y, width, percent, color, label)
+    -- Draw Label
     mon.setCursorPos(x, y)
     mon.setBackgroundColor(colors.black)
     mon.setTextColor(colors.white)
     mon.write(label)
     
-    -- Strict safety limits
+    -- Draw Bar Track
     if not percent then percent = 0 end
     if percent < 0 then percent = 0 end
     if percent > 1 then percent = 1 end
@@ -84,11 +91,15 @@ local function drawBar(x, y, width, percent, color, label)
     mon.setBackgroundColor(colors.gray)
     mon.write(string.rep(" ", barW)) 
     
+    -- Draw Bar Fill
     mon.setCursorPos(x, y+1)
     mon.setBackgroundColor(color or colors.blue)
     if filled > 0 then
         mon.write(string.rep(" ", filled))
     end
+    
+    -- Reset background to black immediately to prevent bleed
+    mon.setBackgroundColor(colors.black)
 end
 
 -- ================= ANIMATION =================
@@ -100,16 +111,13 @@ local function startupAnimation()
     centerText(h/2, "SYSTEM INITIALIZING...", colors.cyan, colors.black)
     sleep(1)
     
-    -- Blast Door Effect
     mon.setBackgroundColor(colors.gray)
     mon.clear()
     centerText(h/2, "LOADING DRIVERS", colors.lime, colors.gray)
     sleep(0.5)
     
-    -- Open "Doors"
     for i = 0, w/2 do
         mon.setBackgroundColor(colors.black)
-        -- Clear from center out
         for y = 1, h do
             mon.setCursorPos((w/2) - i, y); mon.write(" ")
             mon.setCursorPos((w/2) + i, y); mon.write(" ")
@@ -118,7 +126,6 @@ local function startupAnimation()
     end
     
     mon.setTextScale(0.5)
-    -- Refresh size after scale change
     w, h = mon.getSize() 
 end
 
@@ -127,7 +134,6 @@ local buttons = {}
 local function drawButton(name, x, y, width, height, color, label, textColor)
     drawBox(x, y, width, height, color)
     mon.setTextColor(textColor or colors.black)
-    -- Center text in button
     local tx = x + math.floor((width - #label)/2)
     local ty = y + math.floor(height/2)
     mon.setCursorPos(tx, ty)
@@ -137,7 +143,7 @@ end
 
 -- ================= MAIN UI =================
 local function drawGUI()
-    -- 1. Get Data (Safe Mode)
+    -- 1. Get Data
     local r_status = getVal(reactor.getStatus)
     local r_temp   = getVal(reactor.getTemperature)
     local r_cool   = getVal(reactor.getCoolantFilledPercentage)
@@ -171,14 +177,14 @@ local function drawGUI()
 
     -- 3. Render
     mon.setBackgroundColor(colors.black)
-    mon.clear()
+    -- We don't clear() every frame to avoid flicker, just overwrite areas
 
     -- Header
     drawBox(1, 1, w, 3, colors.blue)
     centerText(2, "TITAN-X :: COMMAND", colors.white, colors.blue)
 
-    -- REACTOR PANEL
-    mon.setCursorPos(2, 5); mon.setTextColor(colors.cyan); mon.setBackgroundColor(colors.black); mon.write("REACTOR")
+    -- LEFT COLUMN: REACTOR
+    writeText(2, 5, "REACTOR", colors.cyan)
     
     local tempC = (r_temp > 1000) and colors.red or colors.cyan
     drawBar(2, 7, 24, r_temp/SAFE_TEMP, tempC, "Temp: " .. math.floor(r_temp) .. " K")
@@ -189,43 +195,40 @@ local function drawGUI()
     local wasteC = (r_waste > 0.8) and colors.orange or colors.magenta
     drawBar(2, 13, 24, r_waste, wasteC, "Waste: " .. math.floor(r_waste*100) .. "%")
 
-    mon.setCursorPos(2, 16); mon.setTextColor(colors.lightGray); mon.write("Burn: ")
-    mon.setTextColor(colors.white); mon.write(r_burn .. " mB/t")
+    writeText(2, 16, "Burn Rate: ", colors.lightGray)
+    writeText(13, 16, r_burn .. " mB/t", colors.white)
 
-    -- POWER PANEL
+    -- RIGHT COLUMN: POWER
     local col2 = 30
-    mon.setCursorPos(col2, 5); mon.setTextColor(colors.yellow); mon.write("GRID STATS")
+    writeText(col2, 5, "GRID STATS", colors.yellow)
     
-    mon.setCursorPos(col2, 7); mon.setTextColor(colors.lightGray); mon.write("Turbine:")
-    mon.setTextColor(colors.lime); mon.write(formatNum(t_prod).." FE/t")
+    writeText(col2, 7, "Turbine:", colors.lightGray)
+    writeText(col2+9, 7, formatNum(t_prod).." FE/t", colors.lime)
     
     local matPct = m_eng / m_max
     drawBar(col2, 9, 24, matPct, colors.green, "Matrix: "..math.floor(matPct*100).."%")
     
-    mon.setCursorPos(col2, 12); mon.setTextColor(colors.lightGray); mon.write("Store: ")
-    mon.setTextColor(colors.white); mon.write(formatNum(m_eng).." FE")
+    writeText(col2, 12, "Store: ", colors.lightGray)
+    writeText(col2+7, 12, formatNum(m_eng).." FE", colors.white)
     
-    mon.setCursorPos(col2, 13); mon.setTextColor(colors.lightGray); mon.write("Input: ")
-    mon.setTextColor(colors.green); mon.write(formatNum(m_in).." FE/t")
+    writeText(col2, 13, "Input: ", colors.lightGray)
+    writeText(col2+7, 13, formatNum(m_in).." FE/t", colors.green)
     
-    mon.setCursorPos(col2, 14); mon.setTextColor(colors.lightGray); mon.write("Output:")
-    mon.setTextColor(colors.red); mon.write(formatNum(m_out).." FE/t")
+    writeText(col2, 14, "Output:", colors.lightGray)
+    writeText(col2+8, 14, formatNum(m_out).." FE/t", colors.red)
 
-    -- STATUS
-    mon.setCursorPos(col2, 16)
+    -- STATUS TEXT
     if scramTriggered then
-        mon.setTextColor(colors.red); mon.write("SCRAM: " .. scramReason)
+        writeText(col2, 16, "SCRAM: " .. scramReason, colors.red)
     elseif r_status then
-        mon.setTextColor(colors.lime); mon.write("SYSTEM ONLINE")
+        writeText(col2, 16, "SYSTEM ONLINE   ", colors.lime)
     else
-        mon.setTextColor(colors.orange); mon.write("SYSTEM IDLE")
+        writeText(col2, 16, "SYSTEM IDLE     ", colors.orange)
     end
 
     -- CONTROLS
     local bY = h - 4
-    mon.setCursorPos(2, bY)
-    mon.setTextColor(colors.cyan)
-    mon.write("TARGET: " .. targetBurn .. " mB/t")
+    writeText(2, bY, "TARGET: " .. targetBurn .. " mB/t   ", colors.cyan)
     
     -- Buttons
     drawButton("m25", 2, bY+1, 5, 3, colors.gray, "-25", colors.white)
