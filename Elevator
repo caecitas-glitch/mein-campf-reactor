@@ -1,0 +1,92 @@
+-- startup.lua
+-- This script turns the monitor into a touchscreen elevator control
+peripheral.find("modem", rednet.open)
+
+-- Find the monitor attached to this computer
+local mon = peripheral.find("monitor")
+
+-- If no monitor is found, use the computer's own screen
+if not mon then 
+    mon = term.current()
+else
+    mon.setTextScale(1) -- Adjust text size (0.5 to 5)
+end
+
+-- Configuration
+local floors = {
+    [1] = "Ground",
+    [2] = "Offices",
+    [3] = "Labs",
+    [4] = "Roof"
+}
+
+-- Colors for the UI
+local bg_color = colors.gray
+local btn_color = colors.blue
+local text_color = colors.white
+
+local function drawButtons()
+    mon.setBackgroundColor(bg_color)
+    mon.clear()
+    
+    local w, h = mon.getSize()
+    local btnHeight = math.floor(h / #floors)
+    
+    for i = 1, #floors do
+        -- Calculate button position
+        local yPos = (#floors - i) * btnHeight + 1
+        
+        mon.setBackgroundColor(btn_color)
+        mon.setTextColor(text_color)
+        
+        -- Draw the button bar
+        for y = yPos, yPos + btnHeight - 2 do
+            mon.setCursorPos(2, y)
+            mon.write(string.rep(" ", w - 2))
+        end
+        
+        -- Center the text
+        local label = "Floor " .. i .. ": " .. floors[i]
+        mon.setCursorPos(math.floor(w/2 - #label/2), yPos + math.floor(btnHeight/2) - 1)
+        mon.write(label)
+    end
+end
+
+local function checkClick(x, y)
+    local w, h = mon.getSize()
+    local btnHeight = math.floor(h / #floors)
+    
+    -- Reverse math to find which button was clicked
+    -- Because we drew Floor 1 at the bottom and Floor 4 at the top
+    local clickedIndex = #floors - math.floor((y - 1) / btnHeight)
+    
+    if clickedIndex >= 1 and clickedIndex <= #floors then
+        return clickedIndex
+    end
+    return nil
+end
+
+-- Main Loop
+while true do
+    drawButtons()
+    
+    -- Wait for a touch event on the monitor
+    local event, side, x, y = os.pullEvent("monitor_touch")
+    
+    local targetFloor = checkClick(x, y)
+    
+    if targetFloor then
+        mon.setBackgroundColor(colors.lime)
+        mon.clear()
+        mon.setCursorPos(2,2)
+        mon.write("Calling Floor " .. targetFloor .. "...")
+        
+        -- Broadcast to all elevators
+        rednet.broadcast({
+            command = "goto",
+            floor = targetFloor
+        }, "elevator_network")
+        
+        sleep(2) -- Wait before redrawing
+    end
+end
