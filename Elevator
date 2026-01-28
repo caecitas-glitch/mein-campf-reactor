@@ -1,92 +1,71 @@
 -- startup.lua
--- This script turns the monitor into a touchscreen elevator control
+-- Works on Pocket Computers AND Wall Monitors
 peripheral.find("modem", rednet.open)
 
--- Find the monitor attached to this computer
-local mon = peripheral.find("monitor")
-
--- If no monitor is found, use the computer's own screen
-if not mon then 
-    mon = term.current()
-else
-    mon.setTextScale(1) -- Adjust text size (0.5 to 5)
-end
-
--- Configuration
 local floors = {
-    [1] = "Ground",
-    [2] = "Offices",
-    [3] = "Labs",
-    [4] = "Roof"
+    [1] = "Lobby",
+    [2] = "Storage",
+    [3] = "Roof"
 }
 
--- Colors for the UI
-local bg_color = colors.gray
-local btn_color = colors.blue
-local text_color = colors.white
+-- Detect screen type
+local mon = peripheral.find("monitor")
+if not mon then 
+    mon = term.current() -- Use Pocket Computer screen
+else
+    mon.setTextScale(1)  -- Use Wall Monitor screen
+end
 
-local function drawButtons()
-    mon.setBackgroundColor(bg_color)
+local function drawMenu()
+    mon.setBackgroundColor(colors.black)
     mon.clear()
+    mon.setCursorPos(1,1)
+    mon.setTextColor(colors.cyan)
+    mon.write("== ELEVATOR CONTROL ==")
     
     local w, h = mon.getSize()
-    local btnHeight = math.floor(h / #floors)
-    
+    local spacer = math.floor(h / 4) -- Space buttons out evenly
+
     for i = 1, #floors do
-        -- Calculate button position
-        local yPos = (#floors - i) * btnHeight + 1
-        
-        mon.setBackgroundColor(btn_color)
-        mon.setTextColor(text_color)
-        
-        -- Draw the button bar
-        for y = yPos, yPos + btnHeight - 2 do
-            mon.setCursorPos(2, y)
-            mon.write(string.rep(" ", w - 2))
-        end
-        
-        -- Center the text
-        local label = "Floor " .. i .. ": " .. floors[i]
-        mon.setCursorPos(math.floor(w/2 - #label/2), yPos + math.floor(btnHeight/2) - 1)
-        mon.write(label)
+        mon.setCursorPos(2, 2 + (i*2)) 
+        mon.setTextColor(colors.white)
+        mon.write("[" .. i .. "] " .. floors[i])
     end
+    
+    mon.setCursorPos(2, h)
+    mon.setTextColor(colors.yellow)
+    mon.write("Select Floor...")
 end
 
-local function checkClick(x, y)
-    local w, h = mon.getSize()
-    local btnHeight = math.floor(h / #floors)
-    
-    -- Reverse math to find which button was clicked
-    -- Because we drew Floor 1 at the bottom and Floor 4 at the top
-    local clickedIndex = #floors - math.floor((y - 1) / btnHeight)
-    
-    if clickedIndex >= 1 and clickedIndex <= #floors then
-        return clickedIndex
-    end
-    return nil
-end
-
--- Main Loop
 while true do
-    drawButtons()
+    drawMenu()
     
-    -- Wait for a touch event on the monitor
-    local event, side, x, y = os.pullEvent("monitor_touch")
+    local event, side, x, y = os.pullEvent()
+    local selectedFloor = nil
+
+    -- 1. If you CLICK the screen (Pocket or Monitor)
+    if event == "mouse_click" or event == "monitor_touch" then
+        -- Simple math to find which button you clicked
+        -- We drew them at Y positions: 4, 6, 8...
+        -- This approximates the click to the floor number
+        if y >= 4 and y <= 4 then selectedFloor = 1 end
+        if y >= 6 and y <= 6 then selectedFloor = 2 end
+        if y >= 8 and y <= 8 then selectedFloor = 3 end
     
-    local targetFloor = checkClick(x, y)
-    
-    if targetFloor then
-        mon.setBackgroundColor(colors.lime)
-        mon.clear()
-        mon.setCursorPos(2,2)
-        mon.write("Calling Floor " .. targetFloor .. "...")
+    -- 2. If you TYPE the number (Pocket Computer only)
+    elseif event == "char" then
+        selectedFloor = tonumber(side)
+    end
+
+    -- Send the signal!
+    if selectedFloor and floors[selectedFloor] then
+        mon.setCursorPos(1, 3)
+        mon.setTextColor(colors.lime)
+        mon.write(">> CALLING FLOOR " .. selectedFloor .. " <<")
         
-        -- Broadcast to all elevators
-        rednet.broadcast({
-            command = "goto",
-            floor = targetFloor
-        }, "elevator_network")
+        -- Broadcast to ALL 4 Buildings
+        rednet.broadcast({ floor = selectedFloor }, "elevator_cmd")
         
-        sleep(2) -- Wait before redrawing
+        sleep(2) -- Wait so you can read the text
     end
 end
