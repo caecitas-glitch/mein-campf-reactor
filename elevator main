@@ -1,11 +1,11 @@
--- server.lua
--- Run this on the stationary computers at the base of the shafts
+-- SERVER SCRIPT (Run at the base of the elevator)
 peripheral.find("modem", rednet.open)
-print("Elevator Server Online: " .. os.getComputerID())
+local id = os.getComputerID()
+print("Elevator Server Online (ID: " .. id .. ")")
+print("Waiting for signals...")
 
--- CONFIGURATION:
--- Which computer side activates which floor?
--- Wire your Redstone Links to these sides!
+-- CONFIGURATION
+-- Connect your Redstone Links to these sides of the Computer
 local floorMap = {
     [1] = "back",   -- Floor 1 (Lobby)
     [2] = "right",  -- Floor 2
@@ -13,20 +13,28 @@ local floorMap = {
 }
 
 while true do
-    local id, msg = rednet.receive("elevator_cmd")
+    -- Wait for a message
+    local senderId, message = rednet.receive("elevator_cmd")
     
-    -- Check if message is a valid command
-    if type(msg) == "table" and msg.floor then
-        local target = msg.floor
+    if type(message) == "table" and message.floor then
+        local target = message.floor
         local side = floorMap[target]
         
         if side then
-            print("Sync Command: Going to Floor " .. target)
+            print("Command Received: Sending Elevators to Floor " .. target)
             
-            -- Pulse the redstone to tell Create Mod "Go here!"
+            -- Turn on the signal
             rs.setOutput(side, true)
-            sleep(1.0) -- Hold long enough for the elevator to react
+            
+            -- FIX FOR CALLING DOWN:
+            -- Hold the signal for 4 seconds. This forces the elevator 
+            -- to "wake up" and move, even if it's currently parked.
+            sleep(4) 
+            
+            -- Turn off the signal
             rs.setOutput(side, false)
+        else
+            print("Error: No redstone side configured for Floor " .. target)
         end
     end
 end
