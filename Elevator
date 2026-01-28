@@ -1,5 +1,4 @@
--- startup.lua
--- Works on Pocket Computers AND Wall Monitors
+-- CLIENT SCRIPT (Run on Pocket Computer or Wall Screen)
 peripheral.find("modem", rednet.open)
 
 local floors = {
@@ -8,64 +7,65 @@ local floors = {
     [3] = "Roof"
 }
 
--- Detect screen type
+-- Check if we are a Pocket Computer or a Big Monitor
 local mon = peripheral.find("monitor")
 if not mon then 
-    mon = term.current() -- Use Pocket Computer screen
+    mon = term.current() -- Use built-in screen
 else
-    mon.setTextScale(1)  -- Use Wall Monitor screen
+    mon.setTextScale(1)  -- Use Wall Monitor
 end
 
-local function drawMenu()
+local function drawUI()
     mon.setBackgroundColor(colors.black)
     mon.clear()
     mon.setCursorPos(1,1)
-    mon.setTextColor(colors.cyan)
-    mon.write("== ELEVATOR CONTROL ==")
     
+    -- Header
+    mon.setTextColor(colors.cyan)
+    mon.write("== ELEVATOR ==")
+    
+    -- Draw Buttons
     local w, h = mon.getSize()
-    local spacer = math.floor(h / 4) -- Space buttons out evenly
-
     for i = 1, #floors do
+        -- Draw at lines 4, 6, 8
         mon.setCursorPos(2, 2 + (i*2)) 
         mon.setTextColor(colors.white)
         mon.write("[" .. i .. "] " .. floors[i])
     end
     
-    mon.setCursorPos(2, h)
+    -- Footer
+    mon.setCursorPos(2, h-1)
     mon.setTextColor(colors.yellow)
     mon.write("Select Floor...")
 end
 
 while true do
-    drawMenu()
+    drawUI()
     
     local event, side, x, y = os.pullEvent()
     local selectedFloor = nil
-
-    -- 1. If you CLICK the screen (Pocket or Monitor)
-    if event == "mouse_click" or event == "monitor_touch" then
-        -- Simple math to find which button you clicked
-        -- We drew them at Y positions: 4, 6, 8...
-        -- This approximates the click to the floor number
-        if y >= 4 and y <= 4 then selectedFloor = 1 end
-        if y >= 6 and y <= 6 then selectedFloor = 2 end
-        if y >= 8 and y <= 8 then selectedFloor = 3 end
     
-    -- 2. If you TYPE the number (Pocket Computer only)
+    -- 1. Handle Touch (Monitor) or Mouse Click (Pocket)
+    if event == "monitor_touch" or event == "mouse_click" then
+        -- Map the Y-coordinate click to a floor number
+        if y == 4 then selectedFloor = 1 end
+        if y == 6 then selectedFloor = 2 end
+        if y == 8 then selectedFloor = 3 end
+        
+    -- 2. Handle Keyboard Typing (Pocket Only)
     elseif event == "char" then
         selectedFloor = tonumber(side)
     end
-
-    -- Send the signal!
+    
+    -- Send Command
     if selectedFloor and floors[selectedFloor] then
-        mon.setCursorPos(1, 3)
+        mon.setCursorPos(1, 10)
         mon.setTextColor(colors.lime)
-        mon.write(">> CALLING FLOOR " .. selectedFloor .. " <<")
+        mon.write(">> CALLING " .. selectedFloor .. " <<")
         
-        -- Broadcast to ALL 4 Buildings
+        -- Broadcast to ALL 4 Buildings simultaneously
         rednet.broadcast({ floor = selectedFloor }, "elevator_cmd")
         
-        sleep(2) -- Wait so you can read the text
+        sleep(2) -- Cool down prevents spamming
     end
 end
