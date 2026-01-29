@@ -1,4 +1,4 @@
--- WALL MONITOR SCRIPT (HD Text + Anti-Clip)
+-- WALL MONITOR SCRIPT (HD Text + Anti-Clip)s
 
 -- 1. CONFIGURATION
 local floors = {
