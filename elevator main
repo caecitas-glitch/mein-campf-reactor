@@ -1,40 +1,43 @@
 -- SERVER SCRIPT (Run at the base of the elevator)
 peripheral.find("modem", rednet.open)
-local id = os.getComputerID()
-print("Elevator Server Online (ID: " .. id .. ")")
+print("Elevator Server Online. ID: " .. os.getComputerID())
 print("Waiting for signals...")
 
 -- CONFIGURATION
--- Connect your Redstone Links to these sides of the Computer
+-- This maps the "Floor Number" to the "Computer Side"
+-- Make sure your Redstone Links are on these sides!
 local floorMap = {
     [1] = "back",   -- Floor 1 (Lobby)
-    [2] = "right",  -- Floor 2
-    [3] = "left"    -- Floor 3
+    [2] = "right",  -- Floor 2 (Storage)
+    [3] = "left"    -- Floor 3 (Roof)
 }
 
 while true do
-    -- Wait for a message
-    local senderId, message = rednet.receive("elevator_cmd")
+    -- 1. Listen for the exact protocol used in your client script
+    local id, message = rednet.receive("elevator_cmd")
     
+    -- 2. Verify the message is correct
     if type(message) == "table" and message.floor then
         local target = message.floor
         local side = floorMap[target]
         
         if side then
-            print("Command Received: Sending Elevators to Floor " .. target)
+            print("Received Call: Sending Elevator to Floor " .. target)
             
-            -- Turn on the signal
+            -- 3. Turn ON the signal
             rs.setOutput(side, true)
             
-            -- FIX FOR CALLING DOWN:
-            -- Hold the signal for 4 seconds. This forces the elevator 
-            -- to "wake up" and move, even if it's currently parked.
+            -- 4. HOLD the signal (CRITICAL STEP)
+            -- We hold it for 4 seconds to ensure the Create Elevator 
+            -- "wakes up" and realizes it needs to move.
+            -- If this is too short, "Calling Down" will fail.
             sleep(4) 
             
-            -- Turn off the signal
+            -- 5. Turn OFF the signal
             rs.setOutput(side, false)
+            print("Signal ended.")
         else
-            print("Error: No redstone side configured for Floor " .. target)
+            print("Error: No side configured for Floor " .. target)
         end
     end
 end
