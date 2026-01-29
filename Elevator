@@ -1,4 +1,5 @@
 -- WALL MONITOR SCRIPT (Touch Keypad Version)
+-- FIX: Replaced "colors.darkGray" with "colors.gray"
 
 -- ==========================================
 -- 1. SETUP & CONFIGURATION
@@ -16,11 +17,11 @@ for _, side in pairs(sides) do
 end
 if not modemFound then pcall(rednet.open, "top") end
 
--- CONFIGURATION (Updated as requested)
+-- CONFIGURATION
 local floors = {
     [1] = { name = "Lobby",   locked = false },
-    [2] = { name = "Storage", locked = false }, -- Unlocked
-    [3] = { name = "Roof",    locked = true, pin = "5555" } -- The only locked floor
+    [2] = { name = "Storage", locked = false },
+    [3] = { name = "Roof",    locked = true, pin = "5555" } -- Locked with 5555
 }
 
 -- SETUP MONITOR
@@ -33,8 +34,9 @@ local c_bg = colors.black
 local c_btn = colors.blue
 local c_text = colors.white
 local c_lock = colors.red
-local c_keypad_btn = colors.gray
-local c_keypad_text = colors.yellow
+local c_keypad_btn = colors.gray       -- Buttons background
+local c_keypad_text = colors.yellow    -- Buttons text
+local c_pin_bg = colors.gray           -- PIN display background (Fixed)
 
 -- ==========================================
 -- 2. DRAWING FUNCTIONS
@@ -86,8 +88,9 @@ local function drawKeypadUI(targetName, currentPin)
     mon.write("SECURE: " .. targetName)
     
     -- PIN Display (Masked with *)
+    -- FIX: Changed colors.darkGray to c_pin_bg (colors.gray)
     mon.setCursorPos(6,4)
-    mon.setBackgroundColor(colors.darkGray)
+    mon.setBackgroundColor(c_pin_bg)
     mon.setTextColor(colors.white)
     local masked = string.rep("*", #currentPin)
     mon.write(" " .. masked .. string.rep(" ", 4-#currentPin) .. " ")
