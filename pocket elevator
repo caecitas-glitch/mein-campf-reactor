@@ -1,19 +1,21 @@
--- SMART POCKET (Proximity Version - No GPS)
+-- SMART POCKET (Scan = Bypass PIN)
 
--- 1. SETUP
 if peripheral.getType("back") == "modem" then
     rednet.open("back")
 else
     error("No Wireless Modem!")
 end
 
+-- CONFIGURATION
 local floors = {
     [1] = { name = "Lobby",   locked = false },
     [2] = { name = "Storage", locked = false },
-    [3] = { name = "Roof",    locked = true, pin = "5555" }
+    [3] = { name = "Roof",    locked = true, pin = "5555" },
+    [4] = { name = "Bunker",  locked = true, pin = "5555" },
+    [5] = { name = "Vault",   locked = true, pin = "5555" }
 }
 
--- UI COLORS
+-- COLORS
 local c_bg = colors.black
 local c_text = colors.white
 local c_lock = colors.red
@@ -47,16 +49,14 @@ local function drawMenu()
     term.setBackgroundColor(c_bg)
 end
 
--- LOGIC: FIND CLOSEST FLOOR
+-- SCANNING FUNCTION
 local function scanForFloor()
     term.setCursorPos(2, 18)
     term.setTextColor(colors.yellow)
     write("Pinging...")
     
-    -- 1. Broadcast PING
     rednet.broadcast("LOCATE", "elevator_ping")
     
-    -- 2. Listen for replies for 1 second
     local closestFloor = nil
     local shortestDist = 9999
     
@@ -64,14 +64,10 @@ local function scanForFloor()
     
     while true do
         local event, id, msg, protocol = os.pullEvent()
-        
-        -- If time is up, stop listening
         if event == "timer" and id == timerID then
             break
-        -- If we got a reply
         elseif event == "rednet_message" and protocol == "elevator_pong" then
             if type(msg) == "table" and msg.floor and msg.range then
-                -- Check if this is closer than the last one
                 if msg.range < shortestDist then
                     shortestDist = msg.range
                     closestFloor = msg.floor
@@ -79,8 +75,27 @@ local function scanForFloor()
             end
         end
     end
-    
     return closestFloor
+end
+
+-- SECURITY
+local function runPinProcess(target)
+    term.setBackgroundColor(c_bg)
+    term.clear()
+    term.setCursorPos(1,1)
+    print("SECURE: " .. target.name)
+    print("Enter PIN:")
+    term.setTextColor(colors.yellow)
+    write("> ")
+    local pin = read("*")
+    
+    if pin == target.pin then
+        return true
+    else
+        print("DENIED")
+        sleep(1)
+        return false
+    end
 end
 
 -- MAIN LOOP
@@ -89,14 +104,16 @@ while true do
     local event, btn, x, y = os.pullEvent("mouse_click")
     
     local selected = nil
+    local isScan = false -- Flag to track method
     
-    -- Check for Manual Tap
+    -- 1. Check Manual Tap
     local listIdx = (y - 3) / 2
     if listIdx == math.floor(listIdx) and floors[listIdx] then
         selected = listIdx
+        isScan = false -- Manual tap requires PIN
     end
     
-    -- Check for SCAN Button (Row 16)
+    -- 2. Check SCAN Button
     if y == 16 then
         local found = scanForFloor()
         if found then
@@ -105,6 +122,7 @@ while true do
             write("Found: " .. floors[found].name)
             sleep(1)
             selected = found
+            isScan = true -- Scanned tap bypasses PIN
         else
             term.setCursorPos(2, 18)
             term.setTextColor(colors.red)
@@ -113,26 +131,17 @@ while true do
         end
     end
     
-    -- Execute
+    -- 3. EXECUTE
     if selected then
         local target = floors[selected]
-        local auth = true
+        local authorized = true
         
-        -- Security Check
-        if target.locked then
-            term.clear()
-            term.setCursorPos(1,1)
-            print("SECURE: "..target.name)
-            print("Enter PIN:")
-            local pin = read("*")
-            if pin ~= target.pin then
-                auth = false
-                print("DENIED")
-                sleep(1)
-            end
+        -- LOGIC CHANGE: Only check PIN if it was NOT a scan
+        if target.locked and not isScan then
+            authorized = runPinProcess(target)
         end
         
-        if auth then
+        if authorized then
             rednet.broadcast({ floor = selected }, "elevator_cmd")
             term.clear()
             term.setCursorPos(1,5)
