@@ -1,41 +1,50 @@
--- CLIENT SCRIPT (Save as startup.lua)
--- Run on Pocket Computers or Wall Monitors
-peripheral.find("modem", rednet.open)
+-- CLIENT SCRIPT (Pocket & Wall)
+-- 1. OPEN THE MODEM
+-- We try "back" first (for Pocket Computers)
+-- If that fails, we try "top" (Common for Wall Computers)
+-- CHANGE "top" below if you placed your modem on the right/left/etc!
+pcall(rednet.open, "back")
+pcall(rednet.open, "top") 
 
--- CONFIGURATION: Names of your 3 floors
+-- 2. Verify connection
+if not rednet.isOpen() then
+    print("ERROR: No Modem Found!")
+    print("Place a Wireless Modem on the Computer.")
+    print("Pocket Computer: It is built-in (Back).")
+    print("Wall Computer: Place it on Top/Side.")
+    sleep(5)
+    os.reboot()
+end
+
+-- CONFIGURATION
 local floors = {
     [1] = "Lobby",
     [2] = "Storage",
     [3] = "Roof"
 }
 
--- Detect if we are a Pocket Computer or a Big Monitor
+-- Detect Screen Type
 local mon = peripheral.find("monitor")
 if not mon then 
-    mon = term.current() -- Use built-in screen (Pocket Computer)
+    mon = term.current() -- Pocket Computer
 else
-    mon.setTextScale(1)  -- Use Wall Monitor
+    mon.setTextScale(1)  -- Wall Monitor
 end
 
 local function drawUI()
     mon.setBackgroundColor(colors.black)
     mon.clear()
     mon.setCursorPos(1,1)
-    
-    -- Header
     mon.setTextColor(colors.cyan)
     mon.write("== ELEVATOR ==")
     
-    -- Draw Buttons
     local w, h = mon.getSize()
     for i = 1, #floors do
-        -- Draw at lines 4, 6, 8
         mon.setCursorPos(2, 2 + (i*2)) 
         mon.setTextColor(colors.white)
         mon.write("[" .. i .. "] " .. floors[i])
     end
     
-    -- Footer
     mon.setCursorPos(2, h-1)
     mon.setTextColor(colors.yellow)
     mon.write("Select Floor...")
@@ -47,27 +56,21 @@ while true do
     local event, side, x, y = os.pullEvent()
     local selectedFloor = nil
     
-    -- 1. Handle Touch (Monitor) or Mouse Click (Pocket)
     if event == "monitor_touch" or event == "mouse_click" then
-        -- Map the Y-coordinate click to a floor number
         if y == 4 then selectedFloor = 1 end
         if y == 6 then selectedFloor = 2 end
         if y == 8 then selectedFloor = 3 end
-        
-    -- 2. Handle Keyboard Typing (Pocket Only)
     elseif event == "char" then
         selectedFloor = tonumber(side)
     end
     
-    -- Send Command
     if selectedFloor and floors[selectedFloor] then
         mon.setCursorPos(1, 10)
         mon.setTextColor(colors.lime)
         mon.write(">> CALLING " .. selectedFloor .. " <<")
         
-        -- Broadcast to ALL 4 Buildings simultaneously
+        -- Broadcast Command
         rednet.broadcast({ floor = selectedFloor }, "elevator_cmd")
-        
-        sleep(2) -- Cool down prevents spamming
+        sleep(2)
     end
 end
