@@ -1,8 +1,7 @@
 -- =========================================================
---  FINAL SMART-DRAW AD ROTATOR (Revisions Applied)
---  - No Enderman in Subway
---  - Detailed Trash Can
---  - MFE/t @ Caecitas text fix
+--  FINAL SMART-DRAW AD ROTATOR (Fixed Subway + MFE Update)
+--  - Subway: Now uses a bold "Flag" style (Yellow/Green)
+--  - Reactor: Text updated to MFE/t
 -- =========================================================
 
 -- 1. SETUP
@@ -17,7 +16,6 @@ end
 
 local function drawBox(mon, x, y, w, h, color)
     mon.setBackgroundColor(color)
-    -- drawFilledBox uses absolute coordinates
     paintutils.drawFilledBox(x, y, x+w-1, y+h-1, color)
 end
 
@@ -35,7 +33,7 @@ local function centerText(mon, y, text, txtColor, bgColor)
 end
 
 -- ==========================================
--- AD 1: REACTOR (Updated Details + Text)
+-- AD 1: REACTOR (Fixed Text to MFE)
 -- ==========================================
 local function ad_reactor(mon)
     local w, h = mon.getSize()
@@ -53,17 +51,16 @@ local function ad_reactor(mon)
     mon.setCursorPos(sunX + 3, sunY + 6); mon.write("|")
     mon.setCursorPos(sunX + 3, sunY + 7); mon.write("V")
 
-    -- DETAILED TRASH CAN
+    -- Trash Can
     local binW = 12
     local binH = 7
     local binX = math.floor((w - binW)/2) + 1
     local binY = sunY + 9
     
-    -- Main Body (Dark Gray)
-    drawBox(mon, binX, binY, binW, binH, colors.gray)
-    -- The Lid (Wider, Light Gray on top)
-    drawBox(mon, binX-1, binY-1, binW+2, 1, colors.lightGray)
-    -- Detail Ridges (Black vertical lines)
+    drawBox(mon, binX, binY, binW, binH, colors.gray) -- Body
+    drawBox(mon, binX-1, binY-1, binW+2, 1, colors.lightGray) -- Lid
+    
+    -- Ridges
     mon.setBackgroundColor(colors.gray)
     mon.setTextColor(colors.black)
     for i = 1, 3 do
@@ -74,7 +71,7 @@ local function ad_reactor(mon)
         end
     end
     
-    -- UPDATED TEXT
+    -- UPDATED TEXT (MFE/t)
     centerText(mon, 3, "92.57 MFE/t", colors.cyan)
     centerText(mon, 4, "@ Caecitas", colors.cyan)
     
@@ -82,7 +79,7 @@ local function ad_reactor(mon)
 end
 
 -- ==========================================
--- AD 2: MINERALS (Unchanged)
+-- AD 2: MINERALS (Unchanged - It works)
 -- ==========================================
 local function ad_minerals(mon)
     local w, h = mon.getSize()
@@ -100,38 +97,35 @@ local function ad_minerals(mon)
 end
 
 -- ==========================================
--- AD 3: SUBWAY (Complete Rework - No Enderman)
+-- AD 3: SUBWAY (Complete "Flag" Redesign)
 -- ==========================================
 local function ad_subway(mon)
     local w, h = mon.getSize()
-    -- Stark Dystopian Contrast (Black/Yellow/Green)
-    drawFullScreen(mon, colors.black)
     
-    -- Header
-    centerText(mon, 3, "SUBWAY", colors.yellow)
+    -- 1. BACKGROUND: Split Top/Bottom (Flag Style)
+    local halfHeight = math.floor(h / 2)
     
-    -- THE LOGO ARROWS (Drawn with diagonal lines)
-    local midY = math.floor(h/2)
-    local midX = math.floor(w/2)
+    -- Top Half: Yellow
+    drawBox(mon, 1, 1, w, halfHeight, colors.yellow)
     
-    mon.setBackgroundColor(colors.black)
+    -- Bottom Half: Green
+    drawBox(mon, 1, halfHeight + 1, w, h - halfHeight, colors.green)
     
-    -- Left Arrow (Yellow 'S' part pointing left)
-    mon.setTextColor(colors.yellow)
-    mon.setCursorPos(midX-8, midY-2); mon.write("<\\\\")
-    mon.setCursorPos(midX-6, midY-1); mon.write("\\\\")
-    mon.setCursorPos(midX-4, midY);   mon.write("\\\\")
-
-    -- Right Arrow (Green 'Y' part pointing right)
-    mon.setTextColor(colors.green)
-    mon.setCursorPos(midX+1, midY);   mon.write("//")
-    mon.setCursorPos(midX+3, midY+1); mon.write("//")
-    mon.setCursorPos(midX+5, midY+2); mon.write("//>")
-
-    -- Footer Commands
-    drawBox(mon, 1, h-6, w, 7, colors.green) -- Green banner at bottom
-    centerText(mon, h-5, "EAT FRESH.", colors.white, colors.green)
-    centerText(mon, h-3, "OBEY.", colors.yellow, colors.green)
+    -- 2. CENTER BAND: Black strip for the Logo
+    local bandH = 5
+    local bandY = math.floor((h - bandH) / 2) + 1
+    drawBox(mon, 1, bandY, w, bandH, colors.black)
+    
+    -- 3. TEXT LAYERS
+    -- "OBEY" in the yellow sky
+    centerText(mon, math.floor(halfHeight / 2), "OBEY", colors.black, colors.yellow)
+    
+    -- "SUBWAY" in the center black void
+    centerText(mon, bandY + 2, "SUBWAY", colors.white, colors.black)
+    
+    -- "EAT FRESH" in the green ground
+    local bottomCenter = halfHeight + math.floor((h - halfHeight) / 2) + 1
+    centerText(mon, bottomCenter, "EAT FRESH", colors.white, colors.green)
 end
 
 -- ==========================================
