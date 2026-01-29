@@ -1,24 +1,19 @@
--- ADVANCED AD ROTATOR (3x3 Monitor)
--- "High Res" Pixel Art Version
+-- HIGH-FIDELITY AD ROTATOR
+-- Hand-optimized for 3x3 Monitor @ 0.5 Scale (42x30 pixels)
 
--- 1. SETUP
+-- 1. MONITOR SETUP
 local mon = peripheral.find("monitor")
 if not mon then error("No Monitor Found") end
-mon.setTextScale(0.5) -- Essential for higher detail
+mon.setTextScale(0.5) -- CRITICAL: Sets resolution to 42x30
 term.redirect(mon)
+local w, h = mon.getSize() -- Should be 42, 30
 
-local w, h = mon.getSize()
-
--- 2. PIXEL ART ENGINE
--- This function reads a string map and paints pixels
-local function drawSprite(x, y, art, palette)
-    local lines = {}
+-- 2. DRAWING ENGINE
+-- Draws a pixel map where each character represents a color
+local function drawMap(x, y, art, palette)
+    local row = 0
     for line in art:gmatch("[^\r\n]+") do
-        table.insert(lines, line)
-    end
-
-    for row = 1, #lines do
-        local line = lines[row]
+        row = row + 1
         for col = 1, #line do
             local char = line:sub(col, col)
             local color = palette[char]
@@ -29,135 +24,149 @@ local function drawSprite(x, y, art, palette)
     end
 end
 
--- 3. THE ARTWORK (Designed for 3x3 Monitor @ 0.5 Scale)
-
--- PALPATINE (The Hood)
-local sith_palette = {
-    ["."] = colors.black,     -- Background/Void
-    ["D"] = colors.darkGray,  -- Hood
-    ["G"] = colors.gray,      -- Robe highlights
-    ["L"] = colors.lightBlue, -- Lightning
-    ["F"] = colors.lightGray  -- Pale Face
-}
-local sith_art = [[
-.......DDDDDDDD.......
-.....DDDDDDDDDDDD.....
-....DDDDDDDDDDDDDD....
-...DDDDGGDDDDGGDDDD...
-...DDDGGGGDDGGGGDDD...
-...DDD.........DDDD...
-...DDD..FFFFF..DDDD...
-..DDDD..FFFFF..DDDD...
-L.DDDD.........DDDD.L.
-LL.DDD.........DDD.LL.
-.LL.DD.........DD.LL..
-..LL.............LL...
-...LL...........LL....
-....L...........L.....
-]]
-
--- EMERALD (The Ore)
-local gem_palette = {
-    ["G"] = colors.green,  -- Border
-    ["L"] = colors.lime,   -- Fill
-    ["W"] = colors.white   -- Shine
-}
-local gem_art = [[
-......GGGGGGGG......
-....GGLLLLLLLLGG....
-...GLLLLLLLLLLLLG...
-..GLLLLLLLLLLLLLLG..
-..GLLLLWWLLLLLLLLG..
-..GLLLLWWLLLLLLLLG..
-..GLLLLLLLLLLLLLLG..
-..GLLLLLLLLLLLLLLG..
-..GLLLLLLLLLLLLLLG..
-..GLLLLLLLLLLLLLLG..
-..GLLLLLLLLLLLLLLG..
-...GLLLLLLLLLLLLG...
-....GGLLLLLLLLGG....
-......GGGGGGGG......
-]]
-
--- SUBWAY ENDERMAN
-local sub_palette = {
-    ["B"] = colors.black,   -- Head
-    ["P"] = colors.purple,  -- Eyes
-    ["Y"] = colors.orange,  -- Bread
-    ["G"] = colors.lime,    -- Lettuce
-    ["R"] = colors.red,     -- Tomato/Meat
-    ["H"] = colors.gray     -- Hands
-}
-local sub_art = [[
-.......BBBBBBBB.......
-.......BBBBBBBB.......
-.......BBBBBBBB.......
-.......BPPBBPBB.......
-.......BBBBBBBB.......
-.......BBBBBBBB.......
-.......BBBBBBBB.......
-.......HHBBBBHH.......
-...YYYYYYYYYYYYYYYY...
-...GGGGGGGGGGGGGGGG...
-...RRRRRRRRRRRRRRRR...
-...YYYYYYYYYYYYYYYY...
-]]
-
--- 4. DISPLAY FUNCTIONS
-local function centerText(y, text, txtColor, bgColor)
-    if bgColor then paintutils.drawFilledBox(1, y, w, y, bgColor) end
-    mon.setCursorPos(math.floor((w - #text) / 2) + 1, y)
-    mon.setTextColor(txtColor)
+local function centerText(y, text, fg, bg)
+    if bg then paintutils.drawFilledBox(1, y, w, y, bg) end
+    local x = math.floor((w - #text) / 2) + 1
+    mon.setCursorPos(x, y)
+    mon.setTextColor(fg)
     mon.write(text)
 end
 
-local function drawReactorAd()
+-- ==========================================
+-- AD 1: THE REACTOR (Palpatine)
+-- ==========================================
+local function ad_reactor()
     paintutils.drawFilledBox(1, 1, w, h, colors.black)
     
-    -- Draw Sprite Centered
-    -- Approx width 22, height 14. 
-    local sx = math.floor((w - 22) / 2)
-    local sy = math.floor((h - 14) / 2) + 1
-    drawSprite(sx, sy, sith_art, sith_palette)
+    -- Palette: D=DarkGray, L=Lightning(LightBlue), F=Face(LightGray)
+    local pal = {
+        ["."] = colors.black,
+        ["D"] = colors.darkGray,
+        ["L"] = colors.lightBlue,
+        ["F"] = colors.lightGray,
+        ["W"] = colors.white
+    }
+    
+    -- 26 Pixels Wide
+    local art = [[
+...........DDDDDD...........
+.........DDDDDDDDDD.........
+.......DDDDDDDDDDDDDD.......
+......DDDDDDDDDDDDDDDD......
+L....DDDDDDDDDDDDDDDDDD....L
+LL..DDDDDDDDDDDDDDDDDDDD..LL
+.LL.DDDD...DDDDDD...DDDD.LL.
+..LLDDDD...DDDDDD...DDDDLL..
+...LDDDD...FFFFFF...DDDDL...
+...LDDDD....FFFF....DDDDL...
+....LDDD.....FF.....DDDL....
+.....LDD............DDL.....
+......DD............DD......
+.......D............D.......
+]]
+    -- Draw Art Centered
+    drawMap(9, 8, art, pal)
 
+    -- Draw Text
     centerText(2, "92.57 GFE/t", colors.cyan)
     centerText(3, "@ Caecitas Reactor", colors.gray)
     
-    centerText(h-2, "UNLIMITED POWER", colors.purple)
+    mon.setCursorPos(1, 26)
+    mon.setTextColor(colors.purple)
+    mon.write("    UNLIMITED")
+    mon.setTextColor(colors.white)
+    mon.write(" POWER") 
+    -- (Offset text slightly for dramatic effect)
 end
 
-local function drawMineralsAd()
-    paintutils.drawFilledBox(1, 1, w, h, colors.white) -- Clean Lab look
+-- ==========================================
+-- AD 2: MINERALS (The "Greed" Emerald)
+-- ==========================================
+local function ad_minerals()
+    paintutils.drawFilledBox(1, 1, w, h, colors.white)
     
-    local sx = math.floor((w - 20) / 2)
-    local sy = math.floor((h - 14) / 2)
-    drawSprite(sx, sy, gem_art, gem_palette)
+    -- Palette: G=Green(Border), L=Lime(Fill), W=White(Shine), B=Black(Shadow)
+    local pal = {
+        ["."] = colors.white,
+        ["G"] = colors.green,
+        ["L"] = colors.lime,
+        ["W"] = colors.white,
+        ["S"] = colors.gray -- Shadow
+    }
     
-    centerText(3, "AUTOMATED GREED", colors.green, colors.white)
-    centerText(h-2, "WE TOOK THE ORES", colors.black, colors.white)
+    -- 14 Pixels Wide (Sharp definition)
+    local art = [[
+...GGGGGGGG...
+..GLLLLLLLLG..
+.GLLLLLLLLLLG.
+GLLLLWWLLLLLLG
+GLLLLWWLLLLLLG
+GLLLLLLLLLLLLG
+GLLLLLLLLLLLLG
+GLLLLLLLLLLLLG
+GLLLLLLLLLLLLG
+GLLLLLLLLLLLLG
+GLLLLLLLLLLLLG
+.GLLLLLLLLLLG.
+..GLLLLLLLLG..
+...GGGGGGGG...
+....SSSSSS....
+]]
+    drawMap(15, 8, art, pal)
+    
+    centerText(4, "AUTOMATED GREED", colors.green, colors.white)
+    centerText(26, "WE TOOK THE ORES", colors.black, colors.white)
 end
 
-local function drawSubwayAd()
-    paintutils.drawFilledBox(1, 1, w, h, colors.yellow) -- Subway Yellow
+-- ==========================================
+-- AD 3: SUBWAY (Enderman)
+-- ==========================================
+local function ad_subway()
+    paintutils.drawFilledBox(1, 1, w, h, colors.yellow)
     
-    local sx = math.floor((w - 22) / 2)
-    local sy = math.floor((h - 12) / 2)
-    drawSprite(sx, sy, sub_art, sub_palette)
+    -- Palette: B=Black, P=Purple, Y=Bread(Orange), G=Lettuce, R=Tomato, H=Hands(Gray)
+    local pal = {
+        ["."] = colors.yellow,
+        ["B"] = colors.black,
+        ["P"] = colors.purple,
+        ["Y"] = colors.orange,
+        ["G"] = colors.lime,
+        ["R"] = colors.red,
+        ["H"] = colors.gray
+    }
+    
+    -- 20 Pixels Wide
+    local art = [[
+......BBBBBBBB......
+......BBBBBBBB......
+......BBBBBBBB......
+......BPBBBBPB......
+......BBBBBBBB......
+......BBBBBBBB......
+......BBBBBBBB......
+......BBBBBBBB......
+......HHBBBBHH......
+...YYYYYYYYYYYYYY...
+...GGGGGGGGGGGGGG...
+...RRRRRRRRRRRRRR...
+...YYYYYYYYYYYYYY...
+]]
+    drawMap(12, 8, art, pal)
     
     -- Subway Logo Colors
     centerText(3, "Subway", colors.white, colors.green)
     centerText(5, "NOW IN THE END", colors.black, colors.yellow)
-    centerText(h-2, "EAT FRESH", colors.green, colors.yellow)
+    centerText(26, "EAT FRESH", colors.green, colors.yellow)
 end
 
--- 5. MAIN LOOP
+-- 3. MAIN LOOP
 while true do
-    drawReactorAd()
+    ad_reactor()
     sleep(10)
     
-    drawMineralsAd()
+    ad_minerals()
     sleep(10)
     
-    drawSubwayAd()
+    ad_subway()
     sleep(10)
 end
