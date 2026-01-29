@@ -1,10 +1,9 @@
--- POCKET COMPUTER CONTROLLER (Secure Version)
--- 1. Open the built-in modem (Always on "back" for pocket computers)
+-- TOUCHSCREEN POCKET CONTROLLER (Secure)
+-- 1. Open the built-in modem (Always "back" on pocket computers)
 if peripheral.getType("back") == "modem" then
     rednet.open("back")
 else
     print("Error: No Wireless Modem found!")
-    print("Please equip one in your offhand or upgrade.")
     error()
 end
 
@@ -16,8 +15,14 @@ local floors = {
     [3] = { name = "Roof",    locked = true, pin = "1234" }
 }
 
+-- UI Colors
+local bg_color = colors.black
+local text_color = colors.white
+local btn_color = colors.blue
+local locked_color = colors.red
+
 local function drawMenu()
-    term.setBackgroundColor(colors.black)
+    term.setBackgroundColor(bg_color)
     term.clear()
     term.setCursorPos(1,1)
     
@@ -25,53 +30,81 @@ local function drawMenu()
     term.setTextColor(colors.cyan)
     print("== ELEVATOR ==")
     
-    -- List Floors
+    -- Draw Buttons
     for i = 1, #floors do
         local floor = floors[i]
-        term.setTextColor(colors.white)
+        local yPos = 2 + (i * 2) -- Buttons at lines 4, 6, 8...
         
-        -- Add a lock icon if protected
-        local icon = floor.locked and "[LOCKED]" or ""
-        print(i .. ": " .. floor.name .. " " .. icon)
+        -- Set color based on lock status
+        if floor.locked then
+            term.setTextColor(locked_color)
+        else
+            term.setTextColor(text_color)
+        end
+        
+        term.setCursorPos(2, yPos)
+        local lockIcon = floor.locked and " [LOCKED]" or ""
+        write("[" .. i .. "] " .. floor.name .. lockIcon)
     end
     
-    term.setTextColor(colors.yellow)
-    write("\nSelect Floor: ")
-end
-
-local function getPassword()
-    term.setTextColor(colors.red)
-    write("\nEnter PIN: ")
-    term.setTextColor(colors.white)
-    
-    -- read("*") hides the input with asterisks
-    local input = read("*") 
-    return input
+    term.setTextColor(colors.gray)
+    term.setCursorPos(2, 18)
+    write("(Tap a floor)")
 end
 
 while true do
     drawMenu()
     
-    -- Get user input
-    local input = read()
-    local choice = tonumber(input)
+    -- Wait for a tap on the screen
+    local event, button, x, y = os.pullEvent("mouse_click")
     
-    if choice and floors[choice] then
+    -- Calculate which floor was clicked based on Y position
+    -- Math: (y - 2) / 2
+    local clickedIndex = (y - 2) / 2
+    
+    -- Check if the click was valid (it matches a real floor number)
+    if clickedIndex == math.floor(clickedIndex) and floors[clickedIndex] then
+        local choice = clickedIndex
         local target = floors[choice]
         local authorized = true
         
+        -- Flash Selection
+        term.setCursorPos(2, y)
+        term.setTextColor(colors.yellow)
+        write(">> Selecting... <<")
+        sleep(0.2)
+        
         -- Check Security
         if target.locked then
-            local attempt = getPassword()
+            term.setBackgroundColor(colors.black)
+            term.clear()
+            term.setCursorPos(1, 5)
+            term.setTextColor(colors.red)
+            print("SECURE ACCESS REQUIRED")
+            print("Floor: " .. target.name)
+            
+            term.setCursorPos(1, 8)
+            term.setTextColor(colors.white)
+            write("Enter PIN: ")
+            
+            -- User must TYPE the pin now
+            local attempt = read("*") 
+            
             if attempt ~= target.pin then
-                print("ACCESS DENIED!")
+                print("\nACCESS DENIED!")
                 authorized = false
                 sleep(2)
+            else
+                print("\nACCESS GRANTED.")
+                sleep(0.5)
             end
         end
         
         -- Send Signal if allowed
         if authorized then
+            term.setBackgroundColor(colors.black)
+            term.clear()
+            term.setCursorPos(1, 5)
             term.setTextColor(colors.lime)
             print(">> CALLING " .. target.name .. " <<")
             
@@ -80,8 +113,5 @@ while true do
             
             sleep(2)
         end
-    else
-        print("Invalid Floor")
-        sleep(1)
     end
 end
