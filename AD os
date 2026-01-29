@@ -1,7 +1,8 @@
 -- =========================================================
---  FINAL SMART-DRAW AD ROTATOR (Fixed Subway + MFE Update)
---  - Subway: Now uses a bold "Flag" style (Yellow/Green)
---  - Reactor: Text updated to MFE/t
+--  FINAL AD ROTATOR (Real Subway Ad + Visual Sandwich)
+--  - Reactor: 92.57 MFE/t
+--  - Minerals: Blue Screen of Death
+--  - Subway: Green BG, Real Logo, Pixel Sandwich
 -- =========================================================
 
 -- 1. SETUP
@@ -33,34 +34,33 @@ local function centerText(mon, y, text, txtColor, bgColor)
 end
 
 -- ==========================================
--- AD 1: REACTOR (Fixed Text to MFE)
+-- AD 1: REACTOR (MFE/t)
 -- ==========================================
 local function ad_reactor(mon)
     local w, h = mon.getSize()
     drawFullScreen(mon, colors.black)
     
-    -- The Sun (Yellow Square)
+    -- Sun
     local sunSize = 8
     local sunX = math.floor((w - sunSize)/2) + 1
     local sunY = math.floor((h/2) - 6)
     drawBox(mon, sunX, sunY, sunSize, sunSize/2 + 2, colors.yellow)
     
-    -- The Arrow pointing down
+    -- Arrow
     mon.setBackgroundColor(colors.black)
     mon.setTextColor(colors.orange)
     mon.setCursorPos(sunX + 3, sunY + 6); mon.write("|")
     mon.setCursorPos(sunX + 3, sunY + 7); mon.write("V")
 
-    -- Trash Can
+    -- Detailed Trash Can
     local binW = 12
     local binH = 7
     local binX = math.floor((w - binW)/2) + 1
     local binY = sunY + 9
     
-    drawBox(mon, binX, binY, binW, binH, colors.gray) -- Body
-    drawBox(mon, binX-1, binY-1, binW+2, 1, colors.lightGray) -- Lid
+    drawBox(mon, binX, binY, binW, binH, colors.gray) 
+    drawBox(mon, binX-1, binY-1, binW+2, 1, colors.lightGray)
     
-    -- Ridges
     mon.setBackgroundColor(colors.gray)
     mon.setTextColor(colors.black)
     for i = 1, 3 do
@@ -71,15 +71,13 @@ local function ad_reactor(mon)
         end
     end
     
-    -- UPDATED TEXT (MFE/t)
     centerText(mon, 3, "92.57 MFE/t", colors.cyan)
     centerText(mon, 4, "@ Caecitas", colors.cyan)
-    
     centerText(mon, h-3, "THE SUN IS FIRED.", colors.red)
 end
 
 -- ==========================================
--- AD 2: MINERALS (Unchanged - It works)
+-- AD 2: MINERALS (BSOD)
 -- ==========================================
 local function ad_minerals(mon)
     local w, h = mon.getSize()
@@ -97,35 +95,51 @@ local function ad_minerals(mon)
 end
 
 -- ==========================================
--- AD 3: SUBWAY (Complete "Flag" Redesign)
+-- AD 3: SUBWAY (Realism Update)
 -- ==========================================
 local function ad_subway(mon)
     local w, h = mon.getSize()
     
-    -- 1. BACKGROUND: Split Top/Bottom (Flag Style)
-    local halfHeight = math.floor(h / 2)
+    -- 1. BRAND BACKGROUND
+    drawFullScreen(mon, colors.green) -- Iconic Subway Green
     
-    -- Top Half: Yellow
-    drawBox(mon, 1, 1, w, halfHeight, colors.yellow)
+    -- 2. THE LOGO (Two-Tone Text)
+    local logoText = "SUBWAY"
+    local startX = math.floor((w - #logoText)/2) + 1
+    local logoY = 4
     
-    -- Bottom Half: Green
-    drawBox(mon, 1, halfHeight + 1, w, h - halfHeight, colors.green)
+    mon.setCursorPos(startX, logoY)
+    mon.setBackgroundColor(colors.green)
     
-    -- 2. CENTER BAND: Black strip for the Logo
-    local bandH = 5
-    local bandY = math.floor((h - bandH) / 2) + 1
-    drawBox(mon, 1, bandY, w, bandH, colors.black)
+    -- Draw "SUB" in White
+    mon.setTextColor(colors.white)
+    mon.write("SUB")
+    -- Draw "WAY" in Yellow
+    mon.setTextColor(colors.yellow)
+    mon.write("WAY")
     
-    -- 3. TEXT LAYERS
-    -- "OBEY" in the yellow sky
-    centerText(mon, math.floor(halfHeight / 2), "OBEY", colors.black, colors.yellow)
+    -- 3. THE VISUAL (A Big Sandwich)
+    local sandW = 16
+    local sandX = math.floor((w - sandW)/2) + 1
+    local startY = math.floor(h/2) - 2
     
-    -- "SUBWAY" in the center black void
-    centerText(mon, bandY + 2, "SUBWAY", colors.white, colors.black)
+    -- Top Bun (Orange/Brown)
+    drawBox(mon, sandX, startY, sandW, 2, colors.orange)
     
-    -- "EAT FRESH" in the green ground
-    local bottomCenter = halfHeight + math.floor((h - halfHeight) / 2) + 1
-    centerText(mon, bottomCenter, "EAT FRESH", colors.white, colors.green)
+    -- Lettuce (Lime - sticking out)
+    drawBox(mon, sandX-2, startY+2, sandW+4, 1, colors.lime)
+    
+    -- Tomato/Meat (Red)
+    drawBox(mon, sandX, startY+3, sandW, 1, colors.red)
+    
+    -- Cheese (Yellow)
+    drawBox(mon, sandX, startY+4, sandW, 1, colors.yellow)
+    
+    -- Bottom Bun (Orange)
+    drawBox(mon, sandX, startY+5, sandW, 2, colors.orange)
+    
+    -- 4. SLOGAN
+    centerText(mon, h-3, "EAT FRESH.", colors.white, colors.green)
 end
 
 -- ==========================================
