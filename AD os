@@ -1,162 +1,112 @@
--- HIGH-FIDELITY AD ROTATOR
--- Hand-optimized for 3x3 Monitor @ 0.5 Scale (42x30 pixels)
+-- VECTOR AD ROTATOR (3x3 Monitor)
+-- Uses exact shapes instead of text-maps for perfect alignment.
 
--- 1. MONITOR SETUP
+-- 1. SETUP
 local mon = peripheral.find("monitor")
 if not mon then error("No Monitor Found") end
-mon.setTextScale(0.5) -- CRITICAL: Sets resolution to 42x30
+mon.setTextScale(0.5) -- Resolution: 42x30
 term.redirect(mon)
-local w, h = mon.getSize() -- Should be 42, 30
+local w, h = mon.getSize()
 
--- 2. DRAWING ENGINE
--- Draws a pixel map where each character represents a color
-local function drawMap(x, y, art, palette)
-    local row = 0
-    for line in art:gmatch("[^\r\n]+") do
-        row = row + 1
-        for col = 1, #line do
-            local char = line:sub(col, col)
-            local color = palette[char]
-            if color then
-                paintutils.drawPixel(x + col - 1, y + row - 1, color)
-            end
-        end
-    end
+-- 2. HELPER FUNCTIONS
+local function clear(color)
+    mon.setBackgroundColor(color)
+    mon.clear()
+end
+
+local function drawRect(x, y, width, height, color)
+    paintutils.drawFilledBox(x, y, x+width-1, y+height-1, color)
 end
 
 local function centerText(y, text, fg, bg)
-    if bg then paintutils.drawFilledBox(1, y, w, y, bg) end
-    local x = math.floor((w - #text) / 2) + 1
-    mon.setCursorPos(x, y)
+    if bg then drawRect(1, y, w, 1, bg) end
+    mon.setCursorPos(math.floor((w - #text) / 2) + 1, y)
     mon.setTextColor(fg)
     mon.write(text)
 end
 
 -- ==========================================
--- AD 1: THE REACTOR (Palpatine)
+-- AD 1: THE REACTOR (Schematic Style)
 -- ==========================================
 local function ad_reactor()
-    paintutils.drawFilledBox(1, 1, w, h, colors.black)
+    clear(colors.black)
     
-    -- Palette: D=DarkGray, L=Lightning(LightBlue), F=Face(LightGray)
-    local pal = {
-        ["."] = colors.black,
-        ["D"] = colors.darkGray,
-        ["L"] = colors.lightBlue,
-        ["F"] = colors.lightGray,
-        ["W"] = colors.white
-    }
+    -- The Core (Glowing Cyan Center)
+    drawRect(18, 10, 6, 8, colors.cyan)
+    drawRect(19, 11, 4, 6, colors.white) -- Inner brightness
     
-    -- 26 Pixels Wide
-    local art = [[
-...........DDDDDD...........
-.........DDDDDDDDDD.........
-.......DDDDDDDDDDDDDD.......
-......DDDDDDDDDDDDDDDD......
-L....DDDDDDDDDDDDDDDDDD....L
-LL..DDDDDDDDDDDDDDDDDDDD..LL
-.LL.DDDD...DDDDDD...DDDD.LL.
-..LLDDDD...DDDDDD...DDDDLL..
-...LDDDD...FFFFFF...DDDDL...
-...LDDDD....FFFF....DDDDL...
-....LDDD.....FF.....DDDL....
-.....LDD............DDL.....
-......DD............DD......
-.......D............D.......
-]]
-    -- Draw Art Centered
-    drawMap(9, 8, art, pal)
+    -- The Containment Brackets (Dark Gray)
+    paintutils.drawLine(14, 8, 28, 8, colors.gray)   -- Top Cap
+    paintutils.drawLine(14, 21, 28, 21, colors.gray) -- Bottom Cap
+    
+    -- Lightning Bolts (Zig-Zag Lines)
+    mon.setBackgroundColor(colors.black)
+    mon.setTextColor(colors.lightBlue)
+    
+    -- Left Bolt
+    mon.setCursorPos(8, 10); mon.write("/")
+    mon.setCursorPos(7, 11); mon.write("/")
+    mon.setCursorPos(6, 12); mon.write("/")
+    
+    -- Right Bolt
+    mon.setCursorPos(34, 10); mon.write("\\")
+    mon.setCursorPos(35, 11); mon.write("\\")
+    mon.setCursorPos(36, 12); mon.write("\\")
 
-    -- Draw Text
-    centerText(2, "92.57 GFE/t", colors.cyan)
-    centerText(3, "@ Caecitas Reactor", colors.gray)
+    -- Text
+    centerText(3, "92.57 GFE/t", colors.cyan)
+    centerText(5, "@ Caecitas Reactor", colors.lightGray)
     
-    mon.setCursorPos(1, 26)
-    mon.setTextColor(colors.purple)
-    mon.write("    UNLIMITED")
-    mon.setTextColor(colors.white)
-    mon.write(" POWER") 
-    -- (Offset text slightly for dramatic effect)
+    centerText(25, "UNLIMITED", colors.purple)
+    centerText(27, "POWER", colors.white)
 end
 
 -- ==========================================
--- AD 2: MINERALS (The "Greed" Emerald)
+-- AD 2: MINERALS (Clean Emerald)
 -- ==========================================
 local function ad_minerals()
-    paintutils.drawFilledBox(1, 1, w, h, colors.white)
+    clear(colors.purple) -- Changed to purple bg to make emerald pop (Corporate vibe)
     
-    -- Palette: G=Green(Border), L=Lime(Fill), W=White(Shine), B=Black(Shadow)
-    local pal = {
-        ["."] = colors.white,
-        ["G"] = colors.green,
-        ["L"] = colors.lime,
-        ["W"] = colors.white,
-        ["S"] = colors.gray -- Shadow
-    }
+    -- The Emerald (Vector Box)
+    -- Main Gem Body
+    drawRect(15, 9, 12, 16, colors.green) -- Darker Outline
+    drawRect(16, 10, 10, 14, colors.lime) -- Lighter Face
     
-    -- 14 Pixels Wide (Sharp definition)
-    local art = [[
-...GGGGGGGG...
-..GLLLLLLLLG..
-.GLLLLLLLLLLG.
-GLLLLWWLLLLLLG
-GLLLLWWLLLLLLG
-GLLLLLLLLLLLLG
-GLLLLLLLLLLLLG
-GLLLLLLLLLLLLG
-GLLLLLLLLLLLLG
-GLLLLLLLLLLLLG
-GLLLLLLLLLLLLG
-.GLLLLLLLLLLG.
-..GLLLLLLLLG..
-...GGGGGGGG...
-....SSSSSS....
-]]
-    drawMap(15, 8, art, pal)
+    -- The Shine (White Reflection)
+    drawRect(17, 12, 2, 2, colors.white)
     
-    centerText(4, "AUTOMATED GREED", colors.green, colors.white)
-    centerText(26, "WE TOOK THE ORES", colors.black, colors.white)
+    -- Text
+    centerText(4, "AUTOMATED", colors.lime)
+    centerText(5, "GREED", colors.lime)
+    
+    centerText(27, "WE TOOK", colors.black)
+    centerText(28, "THE ORES", colors.black)
 end
 
 -- ==========================================
 -- AD 3: SUBWAY (Enderman)
 -- ==========================================
 local function ad_subway()
-    paintutils.drawFilledBox(1, 1, w, h, colors.yellow)
+    clear(colors.orange) -- Subway "Sandwich Wrapper" Color
     
-    -- Palette: B=Black, P=Purple, Y=Bread(Orange), G=Lettuce, R=Tomato, H=Hands(Gray)
-    local pal = {
-        ["."] = colors.yellow,
-        ["B"] = colors.black,
-        ["P"] = colors.purple,
-        ["Y"] = colors.orange,
-        ["G"] = colors.lime,
-        ["R"] = colors.red,
-        ["H"] = colors.gray
-    }
+    -- Subway Header Bar
+    drawRect(1, 3, w, 3, colors.green)
+    centerText(4, "Subway", colors.white, colors.green)
     
-    -- 20 Pixels Wide
-    local art = [[
-......BBBBBBBB......
-......BBBBBBBB......
-......BBBBBBBB......
-......BPBBBBPB......
-......BBBBBBBB......
-......BBBBBBBB......
-......BBBBBBBB......
-......BBBBBBBB......
-......HHBBBBHH......
-...YYYYYYYYYYYYYY...
-...GGGGGGGGGGGGGG...
-...RRRRRRRRRRRRRR...
-...YYYYYYYYYYYYYY...
-]]
-    drawMap(12, 8, art, pal)
+    centerText(7, "NOW IN THE END", colors.black)
+
+    -- The Enderman Head
+    drawRect(17, 12, 8, 8, colors.black)
+    -- Eyes
+    paintutils.drawPixel(18, 15, colors.purple)
+    paintutils.drawPixel(23, 15, colors.purple)
     
-    -- Subway Logo Colors
-    centerText(3, "Subway", colors.white, colors.green)
-    centerText(5, "NOW IN THE END", colors.black, colors.yellow)
-    centerText(26, "EAT FRESH", colors.green, colors.yellow)
+    -- The Sandwich (Layers)
+    local sandY = 20
+    drawRect(16, sandY, 10, 1, colors.green)   -- Lettuce
+    drawRect(15, sandY+1, 12, 1, colors.brown) -- Bread Bottom
+    
+    centerText(27, "EAT FRESH", colors.green)
 end
 
 -- 3. MAIN LOOP
