@@ -1,41 +1,30 @@
--- SERVER SCRIPT (Save as startup.lua)
--- Run at the base of the elevator
-peripheral.find("modem", rednet.open)
-print("Elevator Server Online. ID: " .. os.getComputerID())
-print("Waiting for signals...")
+-- SERVER SCRIPT (The Brain)
+-- 1. MANUALLY open the modem on the TOP
+-- If your modem is on a different side, change "top" to "right", "left", etc.
+rednet.open("top")
 
--- CONFIGURATION: Wiring
--- Connect your Redstone Links to these sides of the Computer
+print("Elevator Server Online. ID: " .. os.getComputerID())
+print("Modem is OPEN on: top")
+
+-- CONFIGURATION
 local floorMap = {
-    [1] = "back",   -- Activates Floor 1
-    [2] = "right",  -- Activates Floor 2
-    [3] = "left"    -- Activates Floor 3
+    [1] = "back",   -- Floor 1 Link
+    [2] = "right",  -- Floor 2 Link
+    [3] = "left"    -- Floor 3 Link
 }
 
 while true do
-    -- 1. Listen for the signal
     local id, message = rednet.receive("elevator_cmd")
     
-    -- 2. Verify the message
     if type(message) == "table" and message.floor then
         local target = message.floor
         local side = floorMap[target]
         
         if side then
-            print("Received Call: Sending Elevator to Floor " .. target)
-            
-            -- 3. Turn ON the signal
+            print("Command Received. Target: " .. target)
             rs.setOutput(side, true)
-            
-            -- 4. HOLD signal for 4 seconds
-            -- This ensures the elevator unlatches and moves even if "stuck"
             sleep(4) 
-            
-            -- 5. Turn OFF the signal
             rs.setOutput(side, false)
-            print("Signal ended.")
-        else
-            print("Error: No side configured for Floor " .. target)
         end
     end
 end
