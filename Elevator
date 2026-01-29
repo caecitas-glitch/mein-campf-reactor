@@ -1,5 +1,10 @@
--- WALL MONITOR SCRIPT (Secure)
--- 1. AUTO-DETECT MODEM
+-- WALL MONITOR SCRIPT (Touch Keypad Version)
+
+-- ==========================================
+-- 1. SETUP & CONFIGURATION
+-- ==========================================
+
+-- AUTO-DETECT MODEM
 local sides = rs.getSides()
 local modemFound = false
 for _, side in pairs(sides) do
@@ -9,39 +14,46 @@ for _, side in pairs(sides) do
         break
     end
 end
-if not modemFound then
-    -- Try 'top' as a fallback default
-    pcall(rednet.open, "top")
-end
+if not modemFound then pcall(rednet.open, "top") end
 
--- 2. CONFIGURATION
--- Locked floors require you to open the computer terminal to type the PIN
+-- CONFIGURATION (Updated as requested)
 local floors = {
     [1] = { name = "Lobby",   locked = false },
-    [2] = { name = "Storage", locked = true, pin = "0000" },
-    [3] = { name = "Roof",    locked = true, pin = "1234" }
+    [2] = { name = "Storage", locked = false }, -- Unlocked
+    [3] = { name = "Roof",    locked = true, pin = "5555" } -- The only locked floor
 }
 
--- 3. SETUP MONITOR
+-- SETUP MONITOR
 local mon = peripheral.find("monitor")
-if not mon then
-    print("Error: No Monitor Found!")
-    print("Please attach an Advanced Monitor.")
-    error()
-end
+if not mon then error("No Advanced Monitor found!") end
 mon.setTextScale(1)
 
--- Colors
+-- COLORS
 local c_bg = colors.black
 local c_btn = colors.blue
 local c_text = colors.white
 local c_lock = colors.red
+local c_keypad_btn = colors.gray
+local c_keypad_text = colors.yellow
 
-local function drawUI()
+-- ==========================================
+-- 2. DRAWING FUNCTIONS
+-- ==========================================
+
+-- Helper function to draw a colored box
+local function drawBox(x, y, w, h, color)
+    mon.setBackgroundColor(color)
+    for i = y, y + h - 1 do
+        mon.setCursorPos(x, i)
+        mon.write(string.rep(" ", w))
+    end
+end
+
+-- Draws the main floor selection menu
+local function drawMainMenu()
     mon.setBackgroundColor(c_bg)
     mon.clear()
     mon.setCursorPos(1,1)
-    
     mon.setTextColor(colors.cyan)
     mon.write("== ELEVATOR ==")
     
@@ -49,7 +61,6 @@ local function drawUI()
     for i = 1, #floors do
         local floor = floors[i]
         local yPos = 2 + (i * 2)
-        
         mon.setCursorPos(2, yPos)
         if floor.locked then
             mon.setTextColor(c_lock)
@@ -59,74 +70,167 @@ local function drawUI()
             mon.write("[" .. i .. "] " .. floor.name)
         end
     end
-    
     mon.setCursorPos(2, h-1)
     mon.setTextColor(colors.yellow)
     mon.write("Touch to Select")
 end
 
-while true do
-    drawUI()
+-- Draws the 0-9 Keypad Interface
+local function drawKeypadUI(targetName, currentPin)
+    mon.setBackgroundColor(c_bg)
+    mon.clear()
     
-    -- Wait for touch
+    -- Header
+    mon.setCursorPos(2,2)
+    mon.setTextColor(c_lock)
+    mon.write("SECURE: " .. targetName)
+    
+    -- PIN Display (Masked with *)
+    mon.setCursorPos(6,4)
+    mon.setBackgroundColor(colors.darkGray)
+    mon.setTextColor(colors.white)
+    local masked = string.rep("*", #currentPin)
+    mon.write(" " .. masked .. string.rep(" ", 4-#currentPin) .. " ")
+    mon.setBackgroundColor(c_bg)
+    
+    -- Draw Keypad Grid (Standard layout: 789, 456, 123, 0)
+    local layout = {
+        {7, 8, 9},
+        {4, 5, 6},
+        {1, 2, 3},
+        {-1, 0, -2} -- -1 is Clear (C), -2 is empty for spacing
+    }
+    
+    local startX = 4
+    local startY = 7
+    local btnW = 3
+    local btnH = 2
+    local spacing = 1
+    
+    for row = 1, 4 do
+        for col = 1, 3 do
+            local digit = layout[row][col]
+            if digit >= 0 or digit == -1 then
+                local x = startX + (col-1)*(btnW+spacing)
+                local y = startY + (row-1)*(btnH+spacing)
+                
+                drawBox(x, y, btnW, btnH, c_keypad_btn)
+                mon.setCursorPos(x+1, y)
+                mon.setTextColor(c_keypad_text)
+                if digit == -1 then
+                    mon.write("C") -- Clear button
+                else
+                    mon.write(tostring(digit))
+                end
+            end
+        end
+    end
+end
+
+-- ==========================================
+-- 3. LOGIC FUNCTIONS
+-- ==========================================
+
+-- Determines which number button was pressed based on X,Y touch
+local function getKeypadTouch(x, y)
+    -- These coordinates MUST match the drawing layout above
+    if x >= 4 and x <= 6 then
+        if y >=7 and y<=8 then return 7
+        elseif y >=10 and y<=11 then return 4
+        elseif y >=13 and y<=14 then return 1
+        elseif y >=16 and y<=17 then return -1 end -- Clear
+    elseif x >= 8 and x <= 10 then
+        if y >=7 and y<=8 then return 8
+        elseif y >=10 and y<=11 then return 5
+        elseif y >=13 and y<=14 then return 2
+        elseif y >=16 and y<=17 then return 0 end
+    elseif x >= 12 and x <= 14 then
+        if y >=7 and y<=8 then return 9
+        elseif y >=10 and y<=11 then return 6
+        elseif y >=13 and y<=14 then return 3 end
+    end
+    return nil -- Missed a button
+end
+
+-- Handles the PIN entry process loop
+local function runPinProcess(target)
+    local currentPin = ""
+    local entering = true
+    local authorized = false
+    
+    while entering do
+        drawKeypadUI(target.name, currentPin)
+        local event, side, x, y = os.pullEvent("monitor_touch")
+        
+        local digit = getKeypadTouch(x, y)
+        
+        if digit then
+            if digit == -1 then
+                -- Clear button pressed
+                currentPin = ""
+            elseif digit >= 0 and #currentPin < 4 then
+                -- Number pressed, add to PIN string
+                currentPin = currentPin .. digit
+                
+                -- Auto-submit when 4 digits entered
+                if #currentPin == 4 then
+                    drawKeypadUI(target.name, currentPin) -- Show full ****
+                    sleep(0.2)
+                    if currentPin == target.pin then
+                        authorized = true
+                        entering = false
+                        mon.setCursorPos(6,4)
+                        mon.setBackgroundColor(colors.lime)
+                        mon.setTextColor(colors.black)
+                        mon.write(" ACCESS GRANTED ")
+                        sleep(1)
+                    else
+                        mon.setCursorPos(6,4)
+                        mon.setBackgroundColor(c_lock)
+                        mon.setTextColor(colors.white)
+                        mon.write(" ACCESS DENIED  ")
+                        currentPin = ""
+                        sleep(1)
+                    end
+                end
+            end
+        end
+    end
+    return authorized
+end
+
+-- ==========================================
+-- 4. MAIN LOOP
+-- ==========================================
+while true do
+    drawMainMenu()
     local event, side, x, y = os.pullEvent("monitor_touch")
     
     -- Calculate floor index from Y position (Buttons at 4, 6, 8...)
-    -- Math: (y - 2) / 2
     local clickedIndex = (y - 2) / 2
     
     if clickedIndex == math.floor(clickedIndex) and floors[clickedIndex] then
         local target = floors[clickedIndex]
         local authorized = true
         
-        -- Animation: Show selection
+        -- Animation
         mon.setCursorPos(2, y)
         mon.setTextColor(colors.yellow)
-        mon.write(">> CHECKING <<")
+        mon.write(">> SELECTING <<")
+        sleep(0.1)
         
+        -- If locked, switch to Keypad UI
         if target.locked then
-            -- INSTRUCTION PHASE
-            mon.setBackgroundColor(colors.black)
-            mon.clear()
-            mon.setCursorPos(1, 3)
-            mon.setTextColor(colors.red)
-            mon.write("SECURE FLOOR")
-            mon.setCursorPos(1, 5)
-            mon.setTextColor(colors.white)
-            mon.write("Type PIN on")
-            mon.setCursorPos(1, 6)
-            mon.write("Computer Keyboard")
-            
-            -- TERMINAL PHASE (User must use the block)
-            term.clear()
-            term.setCursorPos(1,1)
-            print("SECURITY CHECK")
-            print("Target: " .. target.name)
-            print("Please enter PIN:")
-            term.write("> ")
-            
-            local input = read("*") -- Reads from the Keyboard, hides text
-            
-            if input ~= target.pin then
-                authorized = false
-                mon.setCursorPos(1, 8)
-                mon.setTextColor(colors.red)
-                mon.write("ACCESS DENIED")
-                print("Incorrect PIN.")
-                sleep(2)
-            else
-                print("PIN Accepted.")
-            end
+            authorized = runPinProcess(target)
         end
         
+        -- Final action
         if authorized then
-            mon.setBackgroundColor(colors.black)
+            mon.setBackgroundColor(c_bg)
             mon.clear()
-            mon.setCursorPos(1, 4)
+            mon.setCursorPos(1, 5)
             mon.setTextColor(colors.lime)
             mon.write("CALLING: " .. target.name)
-            
-            -- Send the signal
             rednet.broadcast({ floor = clickedIndex }, "elevator_cmd")
             sleep(2)
         end
