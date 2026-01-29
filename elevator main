@@ -1,22 +1,22 @@
--- SERVER SCRIPT (Run at the base of the elevator)
+-- SERVER SCRIPT (Save as startup.lua)
+-- Run at the base of the elevator
 peripheral.find("modem", rednet.open)
 print("Elevator Server Online. ID: " .. os.getComputerID())
 print("Waiting for signals...")
 
--- CONFIGURATION
--- This maps the "Floor Number" to the "Computer Side"
--- Make sure your Redstone Links are on these sides!
+-- CONFIGURATION: Wiring
+-- Connect your Redstone Links to these sides of the Computer
 local floorMap = {
-    [1] = "back",   -- Floor 1 (Lobby)
-    [2] = "right",  -- Floor 2 (Storage)
-    [3] = "left"    -- Floor 3 (Roof)
+    [1] = "back",   -- Activates Floor 1
+    [2] = "right",  -- Activates Floor 2
+    [3] = "left"    -- Activates Floor 3
 }
 
 while true do
-    -- 1. Listen for the exact protocol used in your client script
+    -- 1. Listen for the signal
     local id, message = rednet.receive("elevator_cmd")
     
-    -- 2. Verify the message is correct
+    -- 2. Verify the message
     if type(message) == "table" and message.floor then
         local target = message.floor
         local side = floorMap[target]
@@ -27,10 +27,8 @@ while true do
             -- 3. Turn ON the signal
             rs.setOutput(side, true)
             
-            -- 4. HOLD the signal (CRITICAL STEP)
-            -- We hold it for 4 seconds to ensure the Create Elevator 
-            -- "wakes up" and realizes it needs to move.
-            -- If this is too short, "Calling Down" will fail.
+            -- 4. HOLD signal for 4 seconds
+            -- This ensures the elevator unlatches and moves even if "stuck"
             sleep(4) 
             
             -- 5. Turn OFF the signal
