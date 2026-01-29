@@ -1,122 +1,72 @@
--- VECTOR AD ROTATOR (3x3 Monitor)
--- Uses exact shapes instead of text-maps for perfect alignment.
+-- MULTI-SCREEN AD ROTATOR
+-- Displays 42x30 .nfp images on ALL connected monitors simultaneously
+-- Supports: Wired Modems, Multiple Monitor Arrays
 
--- 1. SETUP
-local mon = peripheral.find("monitor")
-if not mon then error("No Monitor Found") end
-mon.setTextScale(0.5) -- Resolution: 42x30
-term.redirect(mon)
-local w, h = mon.getSize()
+-- 1. FIND ALL MONITORS
+-- We search for every peripheral of type "monitor"
+local monitors = { peripheral.find("monitor") }
 
--- 2. HELPER FUNCTIONS
-local function clear(color)
-    mon.setBackgroundColor(color)
+if #monitors == 0 then
+    error("No Monitors Found! Check your wired modems.")
+end
+
+print("Detected " .. #monitors .. " monitor(s).")
+
+-- 2. SETUP FUNCTION
+-- Sets resolution to 42x30 (Scale 0.5) on all screens
+for i, mon in ipairs(monitors) do
+    mon.setTextScale(0.5)
+    mon.setBackgroundColor(colors.black)
     mon.clear()
 end
 
-local function drawRect(x, y, width, height, color)
-    paintutils.drawFilledBox(x, y, x+width-1, y+height-1, color)
+-- 3. DISPLAY FUNCTION
+local function showAd(filename, duration)
+    -- Check if file exists (Safety Check)
+    if not fs.exists(filename) then
+        -- Print error to the main computer terminal, not the screens
+        print("Warning: Missing file " .. filename)
+        
+        -- Flash error on screens briefly
+        for _, mon in ipairs(monitors) do
+            term.redirect(mon)
+            mon.setCursorPos(1,1)
+            mon.setTextColor(colors.red)
+            mon.write("FILE MISSING: " .. filename)
+        end
+        sleep(2)
+        return
+    end
+
+    -- Load the image into memory once
+    local image = paintutils.loadImage(filename)
+
+    -- Draw to EVERY monitor
+    for _, mon in ipairs(monitors) do
+        -- Redirect 'paintutils' to this specific monitor
+        term.redirect(mon)
+        
+        -- Clear and Draw
+        mon.setBackgroundColor(colors.black)
+        mon.clear()
+        paintutils.drawImage(image, 1, 1)
+    end
+
+    -- Restore control to the main computer terminal briefly (good practice)
+    term.redirect(term.native())
+    
+    -- Hold the ad
+    sleep(duration)
 end
 
-local function centerText(y, text, fg, bg)
-    if bg then drawRect(1, y, w, 1, bg) end
-    mon.setCursorPos(math.floor((w - #text) / 2) + 1, y)
-    mon.setTextColor(fg)
-    mon.write(text)
-end
-
--- ==========================================
--- AD 1: THE REACTOR (Schematic Style)
--- ==========================================
-local function ad_reactor()
-    clear(colors.black)
-    
-    -- The Core (Glowing Cyan Center)
-    drawRect(18, 10, 6, 8, colors.cyan)
-    drawRect(19, 11, 4, 6, colors.white) -- Inner brightness
-    
-    -- The Containment Brackets (Dark Gray)
-    paintutils.drawLine(14, 8, 28, 8, colors.gray)   -- Top Cap
-    paintutils.drawLine(14, 21, 28, 21, colors.gray) -- Bottom Cap
-    
-    -- Lightning Bolts (Zig-Zag Lines)
-    mon.setBackgroundColor(colors.black)
-    mon.setTextColor(colors.lightBlue)
-    
-    -- Left Bolt
-    mon.setCursorPos(8, 10); mon.write("/")
-    mon.setCursorPos(7, 11); mon.write("/")
-    mon.setCursorPos(6, 12); mon.write("/")
-    
-    -- Right Bolt
-    mon.setCursorPos(34, 10); mon.write("\\")
-    mon.setCursorPos(35, 11); mon.write("\\")
-    mon.setCursorPos(36, 12); mon.write("\\")
-
-    -- Text
-    centerText(3, "92.57 GFE/t", colors.cyan)
-    centerText(5, "@ Caecitas Reactor", colors.lightGray)
-    
-    centerText(25, "UNLIMITED", colors.purple)
-    centerText(27, "POWER", colors.white)
-end
-
--- ==========================================
--- AD 2: MINERALS (Clean Emerald)
--- ==========================================
-local function ad_minerals()
-    clear(colors.purple) -- Changed to purple bg to make emerald pop (Corporate vibe)
-    
-    -- The Emerald (Vector Box)
-    -- Main Gem Body
-    drawRect(15, 9, 12, 16, colors.green) -- Darker Outline
-    drawRect(16, 10, 10, 14, colors.lime) -- Lighter Face
-    
-    -- The Shine (White Reflection)
-    drawRect(17, 12, 2, 2, colors.white)
-    
-    -- Text
-    centerText(4, "AUTOMATED", colors.lime)
-    centerText(5, "GREED", colors.lime)
-    
-    centerText(27, "WE TOOK", colors.black)
-    centerText(28, "THE ORES", colors.black)
-end
-
--- ==========================================
--- AD 3: SUBWAY (Enderman)
--- ==========================================
-local function ad_subway()
-    clear(colors.orange) -- Subway "Sandwich Wrapper" Color
-    
-    -- Subway Header Bar
-    drawRect(1, 3, w, 3, colors.green)
-    centerText(4, "Subway", colors.white, colors.green)
-    
-    centerText(7, "NOW IN THE END", colors.black)
-
-    -- The Enderman Head
-    drawRect(17, 12, 8, 8, colors.black)
-    -- Eyes
-    paintutils.drawPixel(18, 15, colors.purple)
-    paintutils.drawPixel(23, 15, colors.purple)
-    
-    -- The Sandwich (Layers)
-    local sandY = 20
-    drawRect(16, sandY, 10, 1, colors.green)   -- Lettuce
-    drawRect(15, sandY+1, 12, 1, colors.brown) -- Bread Bottom
-    
-    centerText(27, "EAT FRESH", colors.green)
-end
-
--- 3. MAIN LOOP
+-- 4. THE MAIN LOOP
 while true do
-    ad_reactor()
-    sleep(10)
+    -- Ad 1: Reactor
+    showAd("reactor.nfp", 10)
     
-    ad_minerals()
-    sleep(10)
+    -- Ad 2: Minerals (Your EuroCorp Logo)
+    showAd("minerals.nfp", 10)
     
-    ad_subway()
-    sleep(10)
+    -- Ad 3: Subway
+    showAd("subway.nfp", 10)
 end
