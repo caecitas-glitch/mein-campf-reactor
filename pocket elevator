@@ -1,47 +1,26 @@
--- POCKET COMPUTER SCRIPT (Touch Keypad Version)
+-- SMART POCKET (Proximity Version - No GPS)
 
--- ==========================================
--- 1. SETUP & CONFIGURATION
--- ==========================================
-
--- Open the built-in modem (Always "back" on pocket computers)
+-- 1. SETUP
 if peripheral.getType("back") == "modem" then
     rednet.open("back")
 else
-    print("Error: No Wireless Modem found!")
-    error()
+    error("No Wireless Modem!")
 end
 
--- CONFIGURATION
 local floors = {
     [1] = { name = "Lobby",   locked = false },
     [2] = { name = "Storage", locked = false },
     [3] = { name = "Roof",    locked = true, pin = "5555" }
 }
 
--- COLORS
+-- UI COLORS
 local c_bg = colors.black
 local c_text = colors.white
 local c_lock = colors.red
 local c_btn_bg = colors.gray
-local c_btn_text = colors.yellow
-local c_pin_bg = colors.gray
+local c_gps_btn = colors.orange
 
--- ==========================================
--- 2. DRAWING FUNCTIONS
--- ==========================================
-
--- Helper to draw a box
-local function drawBox(x, y, w, h, color)
-    term.setBackgroundColor(color)
-    for i = y, y + h - 1 do
-        term.setCursorPos(x, i)
-        write(string.rep(" ", w))
-    end
-end
-
--- Draw the Floor List
-local function drawMainMenu()
+local function drawMenu()
     term.setBackgroundColor(c_bg)
     term.clear()
     term.setCursorPos(1,1)
@@ -49,213 +28,117 @@ local function drawMainMenu()
     print("== ELEVATOR ==")
     
     for i = 1, #floors do
-        local floor = floors[i]
-        local yPos = 3 + (i * 3) -- Spaced out for easy tapping
-        
-        term.setCursorPos(2, yPos)
-        if floor.locked then
+        local f = floors[i]
+        term.setCursorPos(2, 3+(i*2))
+        if f.locked then
             term.setTextColor(c_lock)
-            write("["..i.."] " .. floor.name .. " [L]")
+            write("["..i.."] "..f.name.." [L]")
         else
             term.setTextColor(c_text)
-            write("["..i.."] " .. floor.name)
+            write("["..i.."] "..f.name)
         end
     end
     
-    term.setCursorPos(2, 19)
-    term.setTextColor(colors.lightGray)
-    write("(Tap to select)")
-end
-
--- Draw the PIN Pad (Optimized for Small Screen)
-local function drawKeypadUI(targetName, currentPin)
-    term.setBackgroundColor(c_bg)
-    term.clear()
-    
-    -- Header
-    term.setCursorPos(1,1)
-    term.setTextColor(c_lock)
-    write("SECURE: " .. string.sub(targetName, 1, 8)) -- Truncate if long
-    
-    -- PIN Display
-    term.setCursorPos(2,3)
-    term.setBackgroundColor(c_pin_bg)
+    -- SCAN BUTTON
+    term.setCursorPos(2, 16)
+    term.setBackgroundColor(c_gps_btn)
     term.setTextColor(colors.white)
-    local masked = string.rep("*", #currentPin)
-    -- Fixed width display box
-    write(" " .. masked .. string.rep(" ", 4-#currentPin) .. " ")
+    write(" [ O ] SCAN FOR ME ")
+    term.setBackgroundColor(c_bg)
+end
+
+-- LOGIC: FIND CLOSEST FLOOR
+local function scanForFloor()
+    term.setCursorPos(2, 18)
+    term.setTextColor(colors.yellow)
+    write("Pinging...")
     
-    -- Keypad Grid (3 columns, 4 rows)
-    -- Pocket screen is small, buttons need to be compact
-    -- Layout:
-    -- 7 8 9
-    -- 4 5 6
-    -- 1 2 3
-    -- C 0
+    -- 1. Broadcast PING
+    rednet.broadcast("LOCATE", "elevator_ping")
     
-    local layout = {
-        {7, 8, 9},
-        {4, 5, 6},
-        {1, 2, 3},
-        {-1, 0, -2} -- -1 = Clear
-    }
+    -- 2. Listen for replies for 1 second
+    local closestFloor = nil
+    local shortestDist = 9999
     
-    local startX = 2
-    local startY = 6
-    local btnW = 7 -- Wide buttons for easier tapping
-    local btnH = 2
-    local spacing = 1
+    local timerID = os.startTimer(1)
     
-    for row = 1, 4 do
-        for col = 1, 3 do
-            local digit = layout[row][col]
-            if digit >= -1 and digit ~= -2 then
-                local x = startX + (col-1)*(btnW+spacing)
-                local y = startY + (row-1)*(btnH+spacing)
-                
-                -- Check if button fits on screen
-                if x + btnW <= 27 then
-                    drawBox(x, y, btnW, btnH, c_btn_bg)
-                    term.setCursorPos(x+3, y) -- Center text somewhat
-                    term.setTextColor(c_btn_text)
-                    if digit == -1 then
-                        write("C")
-                    else
-                        write(tostring(digit))
-                    end
+    while true do
+        local event, id, msg, protocol = os.pullEvent()
+        
+        -- If time is up, stop listening
+        if event == "timer" and id == timerID then
+            break
+        -- If we got a reply
+        elseif event == "rednet_message" and protocol == "elevator_pong" then
+            if type(msg) == "table" and msg.floor and msg.range then
+                -- Check if this is closer than the last one
+                if msg.range < shortestDist then
+                    shortestDist = msg.range
+                    closestFloor = msg.floor
                 end
             end
         end
     end
+    
+    return closestFloor
 end
 
--- ==========================================
--- 3. LOGIC FUNCTIONS
--- ==========================================
-
--- Map X,Y tap to a number
-local function getKeypadTouch(x, y)
-    -- Grid Logic must match Drawing Logic
-    -- Button Size: 7x2
-    -- Spacing: 1
-    -- Start: 2, 6
-    
-    -- Row Detection
-    local row = nil
-    if y >= 6 and y <= 7 then row = 1
-    elseif y >= 9 and y <= 10 then row = 2
-    elseif y >= 12 and y <= 13 then row = 3
-    elseif y >= 15 and y <= 16 then row = 4 end
-    
-    -- Col Detection
-    local col = nil
-    if x >= 2 and x <= 8 then col = 1
-    elseif x >= 10 and x <= 16 then col = 2
-    elseif x >= 18 and x <= 24 then col = 3 end
-    
-    if row and col then
-        if row == 1 then
-            if col == 1 then return 7
-            elseif col == 2 then return 8
-            elseif col == 3 then return 9 end
-        elseif row == 2 then
-            if col == 1 then return 4
-            elseif col == 2 then return 5
-            elseif col == 3 then return 6 end
-        elseif row == 3 then
-            if col == 1 then return 1
-            elseif col == 2 then return 2
-            elseif col == 3 then return 3 end
-        elseif row == 4 then
-            if col == 1 then return -1 -- Clear
-            elseif col == 2 then return 0 end
-        end
-    end
-    return nil
-end
-
-local function runPinProcess(target)
-    local currentPin = ""
-    local entering = true
-    local authorized = false
-    
-    while entering do
-        drawKeypadUI(target.name, currentPin)
-        local event, button, x, y = os.pullEvent("mouse_click")
-        
-        local digit = getKeypadTouch(x, y)
-        
-        if digit then
-            if digit == -1 then
-                currentPin = ""
-            elseif digit >= 0 and #currentPin < 4 then
-                currentPin = currentPin .. digit
-                
-                if #currentPin == 4 then
-                    drawKeypadUI(target.name, currentPin)
-                    sleep(0.2)
-                    if currentPin == target.pin then
-                        authorized = true
-                        entering = false
-                        term.setCursorPos(2,3)
-                        term.setBackgroundColor(colors.lime)
-                        term.setTextColor(colors.black)
-                        write(" ACCESS ")
-                        sleep(1)
-                    else
-                        term.setCursorPos(2,3)
-                        term.setBackgroundColor(c_lock)
-                        term.setTextColor(colors.white)
-                        write(" DENIED ")
-                        currentPin = ""
-                        sleep(1)
-                    end
-                end
-            end
-        end
-    end
-    return authorized
-end
-
--- ==========================================
--- 4. MAIN LOOP
--- ==========================================
+-- MAIN LOOP
 while true do
-    drawMainMenu()
-    local event, button, x, y = os.pullEvent("mouse_click")
+    drawMenu()
+    local event, btn, x, y = os.pullEvent("mouse_click")
     
-    -- Floor Selection Logic
-    -- Row 1: y=6 | Row 2: y=9 | Row 3: y=12
-    -- Let's give a generous hit-box (height of 3 lines per floor)
-    local clickedIndex = nil
+    local selected = nil
     
-    if y >= 6 and y <= 8 then clickedIndex = 1 end
-    if y >= 9 and y <= 11 then clickedIndex = 2 end
-    if y >= 12 and y <= 14 then clickedIndex = 3 end
+    -- Check for Manual Tap
+    local listIdx = (y - 3) / 2
+    if listIdx == math.floor(listIdx) and floors[listIdx] then
+        selected = listIdx
+    end
     
-    if clickedIndex and floors[clickedIndex] then
-        local target = floors[clickedIndex]
-        local authorized = true
+    -- Check for SCAN Button (Row 16)
+    if y == 16 then
+        local found = scanForFloor()
+        if found then
+            term.setCursorPos(2, 18)
+            term.setTextColor(colors.lime)
+            write("Found: " .. floors[found].name)
+            sleep(1)
+            selected = found
+        else
+            term.setCursorPos(2, 18)
+            term.setTextColor(colors.red)
+            write("No Signal Found!")
+            sleep(1)
+        end
+    end
+    
+    -- Execute
+    if selected then
+        local target = floors[selected]
+        local auth = true
         
-        -- Animation
-        term.setCursorPos(2, 3 + (clickedIndex * 3))
-        term.setTextColor(colors.yellow)
-        write(">> SELECTING <<")
-        sleep(0.1)
-        
+        -- Security Check
         if target.locked then
-            authorized = runPinProcess(target)
+            term.clear()
+            term.setCursorPos(1,1)
+            print("SECURE: "..target.name)
+            print("Enter PIN:")
+            local pin = read("*")
+            if pin ~= target.pin then
+                auth = false
+                print("DENIED")
+                sleep(1)
+            end
         end
         
-        if authorized then
-            term.setBackgroundColor(c_bg)
+        if auth then
+            rednet.broadcast({ floor = selected }, "elevator_cmd")
             term.clear()
-            term.setCursorPos(1, 5)
+            term.setCursorPos(1,5)
             term.setTextColor(colors.lime)
-            print("CALLING:")
-            print(target.name)
-            
-            rednet.broadcast({ floor = clickedIndex }, "elevator_cmd")
+            print("ELEVATOR COMING")
+            print("TO: "..target.name)
             sleep(2)
         end
     end
