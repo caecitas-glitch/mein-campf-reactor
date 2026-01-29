@@ -1,16 +1,18 @@
--- CLIENT SCRIPT (Run on Pocket Computer or Wall Screen)
+-- CLIENT SCRIPT (Save as startup.lua)
+-- Run on Pocket Computers or Wall Monitors
 peripheral.find("modem", rednet.open)
 
+-- CONFIGURATION: Names of your 3 floors
 local floors = {
     [1] = "Lobby",
     [2] = "Storage",
     [3] = "Roof"
 }
 
--- Check if we are a Pocket Computer or a Big Monitor
+-- Detect if we are a Pocket Computer or a Big Monitor
 local mon = peripheral.find("monitor")
 if not mon then 
-    mon = term.current() -- Use built-in screen
+    mon = term.current() -- Use built-in screen (Pocket Computer)
 else
     mon.setTextScale(1)  -- Use Wall Monitor
 end
