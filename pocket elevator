@@ -1,0 +1,87 @@
+-- POCKET COMPUTER CONTROLLER (Secure Version)
+-- 1. Open the built-in modem (Always on "back" for pocket computers)
+if peripheral.getType("back") == "modem" then
+    rednet.open("back")
+else
+    print("Error: No Wireless Modem found!")
+    print("Please equip one in your offhand or upgrade.")
+    error()
+end
+
+-- CONFIGURATION
+-- Add "locked = true" and a "pin" to secure a floor
+local floors = {
+    [1] = { name = "Lobby",   locked = false },
+    [2] = { name = "Storage", locked = false },
+    [3] = { name = "Roof",    locked = true, pin = "1234" }
+}
+
+local function drawMenu()
+    term.setBackgroundColor(colors.black)
+    term.clear()
+    term.setCursorPos(1,1)
+    
+    -- Header
+    term.setTextColor(colors.cyan)
+    print("== ELEVATOR ==")
+    
+    -- List Floors
+    for i = 1, #floors do
+        local floor = floors[i]
+        term.setTextColor(colors.white)
+        
+        -- Add a lock icon if protected
+        local icon = floor.locked and "[LOCKED]" or ""
+        print(i .. ": " .. floor.name .. " " .. icon)
+    end
+    
+    term.setTextColor(colors.yellow)
+    write("\nSelect Floor: ")
+end
+
+local function getPassword()
+    term.setTextColor(colors.red)
+    write("\nEnter PIN: ")
+    term.setTextColor(colors.white)
+    
+    -- read("*") hides the input with asterisks
+    local input = read("*") 
+    return input
+end
+
+while true do
+    drawMenu()
+    
+    -- Get user input
+    local input = read()
+    local choice = tonumber(input)
+    
+    if choice and floors[choice] then
+        local target = floors[choice]
+        local authorized = true
+        
+        -- Check Security
+        if target.locked then
+            local attempt = getPassword()
+            if attempt ~= target.pin then
+                print("ACCESS DENIED!")
+                authorized = false
+                sleep(2)
+            end
+        end
+        
+        -- Send Signal if allowed
+        if authorized then
+            term.setTextColor(colors.lime)
+            print(">> CALLING " .. target.name .. " <<")
+            
+            -- Broadcast to the Server
+            rednet.broadcast({ floor = choice }, "elevator_cmd")
+            
+            sleep(2)
+        end
+    else
+        print("Invalid Floor")
+        sleep(1)
+    end
+end
