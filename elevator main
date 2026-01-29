@@ -1,311 +1,223 @@
--- WALL MONITOR SCRIPT (HD Text + Anti-Clip)s
+-- SCROLLABLE ELEVATOR CONTROLLER
+-- Supports: 15+ Floors, Negative Floors, Security, HD Scaling
 
 -- 1. CONFIGURATION
-local floors = {
-    [1] = { name = "Lobby",   locked = false },
-    [2] = { name = "Storage", locked = false },
-    [3] = { name = "Roof",    locked = true, pin = "5555" }
+local SECRET_PIN = "7777" -- Password for -1 and -2
+
+-- Define your floors here (Order matters: Bottom to Top)
+local floor_list = {
+    { id = -2, name = "Deep Storage", locked = true },
+    { id = -1, name = "Vault",        locked = true },
+    { id = 1,  name = "Lobby",        locked = false },
+    { id = 2,  name = "Offices",      locked = false },
+    { id = 3,  name = "Apartments",   locked = false },
+    { id = 4,  name = "Gym",          locked = false },
+    { id = 5,  name = "Pool",         locked = false },
+    { id = 6,  name = "Cafe",         locked = false },
+    { id = 7,  name = "Lab",          locked = false },
+    { id = 8,  name = "Server Room",  locked = false },
+    { id = 9,  name = "Reactor",      locked = false },
+    { id = 10, name = "Maintenance",  locked = false },
+    { id = 11, name = "Penthouse",    locked = false },
+    { id = 12, name = "Roof Access",  locked = false },
+    { id = 13, name = "Observation",  locked = false },
 }
 
 -- 2. SETUP
+local mon = peripheral.find("monitor")
+if not mon then error("No Monitor Found") end
+mon.setTextScale(0.5) -- HD Mode
+local w, h = mon.getSize()
+
+-- Open Rednet (for communicating with the elevator pulley)
 local sides = rs.getSides()
-local modemFound = false
 for _, side in pairs(sides) do
     if peripheral.getType(side) == "modem" then
         rednet.open(side)
-        modemFound = true
         break
     end
 end
-if not modemFound then pcall(rednet.open, "top") end
-
-local mon = peripheral.find("monitor")
-if not mon then error("No Monitor Found") end
-
--- FIX: Set Scale to 0.5 to fit more text (HD Mode)
-mon.setTextScale(0.5)
 
 -- 3. THEME
-local theme = {
-    bg = colors.gray,
-    header_bg = colors.cyan,
-    header_text = colors.black,
-    btn_bg = colors.black,
-    btn_text = colors.white,
-    btn_lock = colors.red,
-    highlight = colors.lime,
-    status_text = colors.lightGray
-}
+local colors_bg = colors.gray
+local colors_btn = colors.black
+local colors_text = colors.white
+local colors_lock = colors.red
+local colors_header = colors.cyan
 
--- 4. HELPERS
-local function clearScreen()
-    mon.setBackgroundColor(theme.bg)
+-- 4. SCROLL VARIABLES
+local scroll_offset = 0     -- How far down we have scrolled
+local btn_height = 3        -- Height of each button
+local list_start_y = 5      -- Where the list starts
+local list_end_y = h - 2    -- Where the list ends
+local visible_count = math.floor((list_end_y - list_start_y) / btn_height)
+
+-- 5. DRAWING HELPERS
+local function clear()
+    mon.setBackgroundColor(colors_bg)
     mon.clear()
 end
 
-local function drawBox(x, y, w, h, color)
+local function drawBox(x, y, width, height, color)
     mon.setBackgroundColor(color)
-    for i = y, y + h - 1 do
-        mon.setCursorPos(x, i)
-        mon.write(string.rep(" ", w))
+    for i = 0, height-1 do
+        mon.setCursorPos(x, y + i)
+        mon.write(string.rep(" ", width))
     end
 end
 
-local function centerText(y, text, txtColor, bgColor)
-    if bgColor then mon.setBackgroundColor(bgColor) end
-    local w, h = mon.getSize()
-    -- Logic to prevent clipping off the left side
+local function centerText(y, text, fg, bg)
+    if bg then mon.setBackgroundColor(bg) end
     local x = math.floor((w - #text) / 2) + 1
-    if x < 1 then x = 1 end 
-    
     mon.setCursorPos(x, y)
-    mon.setTextColor(txtColor)
+    mon.setTextColor(fg)
     mon.write(text)
 end
 
-local function animatePress(yPos, color)
-    local w, h = mon.getSize()
-    drawBox(2, yPos, w-2, 1, color)
-    sleep(0.1)
-end
-
--- 5. MAIN MENU
-local function drawMainMenu(statusMsg)
-    clearScreen()
-    local w, h = mon.getSize()
-    
-    -- HEADER
-    drawBox(1, 1, w, 3, theme.header_bg) -- Taller header for HD
-    centerText(2, "ELEVATOR OS", theme.header_text, theme.header_bg)
-    
-    -- FLOORS
-    for i = 1, #floors do
-        local f = floors[i]
-        -- Spacing adjusted for 0.5 scale (items need more vertical space)
-        local yPos = 4 + (i * 4) 
-        
-        drawBox(2, yPos, w-2, 3, theme.btn_bg) -- Taller buttons
-        
-        -- Center the text inside the button vertically
-        mon.setCursorPos(4, yPos+1)
-        if f.locked then
-            mon.setTextColor(theme.btn_lock)
-            mon.write(i .. ". " .. f.name .. " [LOCKED]")
-        else
-            mon.setTextColor(theme.btn_text)
-            mon.write(i .. ". " .. f.name)
-        end
-    end
-    
-    -- STATUS
-    mon.setBackgroundColor(theme.bg)
-    centerText(h-1, statusMsg or "READY", theme.status_text)
-end
-
--- 6. KEYPAD UI (HD Layout)
-local function drawKeypadUI(targetName, currentPin)
-    clearScreen()
-    local w, h = mon.getSize()
+-- 6. MAIN UI (SCROLLABLE)
+local function drawUI(status)
+    clear()
     
     -- Header
-    drawBox(1, 1, w, 3, theme.btn_lock)
-    centerText(2, "SECURE: " .. string.sub(targetName, 1, 10), colors.white, theme.btn_lock)
+    drawBox(1, 1, w, 3, colors_header)
+    centerText(2, "ELEVATOR OS", colors.black, colors_header)
     
-    -- PIN Display
-    drawBox(4, 5, w-8, 3, colors.black)
-    mon.setCursorPos(4, 6)
-    mon.setTextColor(colors.white)
-    
-    local masked = string.rep("*", #currentPin)
-    local padding = math.floor(((w-8) - 4)/2)
-    if padding < 0 then padding = 0 end
-    mon.write(string.rep(" ", padding) .. masked)
-    
-    -- Keypad Buttons
-    -- Dynamic centering for HD
-    local btnW = 5
-    local btnH = 3
-    local gap = 1
-    
-    local totalW = (btnW * 3) + (gap * 2)
-    local startX = math.floor((w - totalW) / 2) + 1
-    local startY = 9
-    
-    local layout = {{7,8,9},{4,5,6},{1,2,3},{-1,0,-2}}
-    
-    for row = 1, 4 do
-        for col = 1, 3 do
-            local digit = layout[row][col]
-            if digit >= -1 and digit ~= -2 then
-                local x = startX + (col-1)*(btnW+gap)
-                local y = startY + (row-1)*(btnH+gap)
-                
-                if y+btnH < h then
-                    drawBox(x, y, btnW, btnH, colors.lightGray)
-                    mon.setCursorPos(x+2, y+1)
-                    mon.setTextColor(colors.black)
-                    if digit == -1 then mon.write("C")
-                    else mon.write(tostring(digit)) end
-                end
+    -- Scroll Arrows (Right Side)
+    if #floor_list > visible_count then
+        mon.setBackgroundColor(colors.lightGray)
+        mon.setTextColor(colors.black)
+        -- Up Arrow
+        mon.setCursorPos(w-2, list_start_y)
+        mon.write("^")
+        -- Down Arrow
+        mon.setCursorPos(w-2, list_end_y - 1)
+        mon.write("v")
+    end
+
+    -- Draw Visible Buttons
+    for i = 1, visible_count do
+        local index = i + scroll_offset
+        if index <= #floor_list then
+            local f = floor_list[index]
+            local y = list_start_y + ((i-1) * btn_height)
+            
+            -- Button Box
+            drawBox(2, y, w-5, btn_height-1, colors_btn)
+            
+            -- Text
+            mon.setCursorPos(4, y+1)
+            if f.locked then
+                mon.setTextColor(colors_lock)
+                mon.write(f.id .. ". " .. f.name .. " [L]")
+            else
+                mon.setTextColor(colors_text)
+                mon.write(f.id .. ". " .. f.name)
             end
         end
     end
+    
+    -- Footer Status
+    centerText(h, status or "IDLE", colors.lightGray, colors_bg)
 end
 
--- 7. TROLL SEQUENCE (Short Lines for No Clipping)
-local function runTrollSequence()
-    clearScreen()
-    mon.setBackgroundColor(colors.black)
-    mon.clear()
-    
-    mon.setTextColor(colors.red) 
-    centerText(2, "Did you actually", colors.red)
-    centerText(3, "put the right", colors.red)
-    centerText(4, "password?", colors.red)
-    
-    mon.setTextColor(colors.gray)
-    -- Broken into short lines to prevent clipping
-    centerText(7, "Its hard to code", colors.gray)
-    centerText(8, "a password system", colors.gray)
-    centerText(9, "for something", colors.gray)
-    centerText(10, "this stupid.", colors.gray)
-    
-    local w, h = mon.getSize()
-    local btnY = h - 3
-    
-    -- Centered Buttons
-    local gap = 4
-    local yesX = math.floor(w/2) - 8
-    local noX = math.floor(w/2) + 2
-    
-    drawBox(yesX, btnY, 6, 3, colors.lime)
-    mon.setCursorPos(yesX+1, btnY+1)
-    mon.setTextColor(colors.black)
-    mon.write("YES")
-    
-    drawBox(noX, btnY, 5, 3, colors.red)
-    mon.setCursorPos(noX+1, btnY+1)
-    mon.setTextColor(colors.white)
-    mon.write("NO")
-    
+-- 7. SECURITY KEYPAD
+local function runKeypad(floorName)
+    local code = ""
     while true do
+        clear()
+        drawBox(1, 1, w, 3, colors_lock)
+        centerText(2, "SECURE ACCESS: " .. floorName, colors.white, colors_lock)
+        
+        centerText(6, "ENTER PIN:", colors.white)
+        centerText(8, string.rep("*", #code), colors.yellow)
+        
+        -- Draw Numpad
+        local keys = { 
+            {'1','2','3'}, 
+            {'4','5','6'}, 
+            {'7','8','9'}, 
+            {'C','0','OK'} 
+        }
+        
+        local startX = math.floor((w - 14)/2) + 1
+        local startY = 10
+        
+        for r, row in ipairs(keys) do
+            for c, key in ipairs(row) do
+                local bx = startX + (c-1)*5
+                local by = startY + (r-1)*3
+                drawBox(bx, by, 4, 2, colors.lightGray)
+                mon.setCursorPos(bx+1, by)
+                mon.setTextColor(colors.black)
+                mon.write(key)
+            end
+        end
+        
         local e, s, x, y = os.pullEvent("monitor_touch")
-        if y >= btnY and y <= btnY+3 then
-            -- YES
-            if x >= yesX and x <= yesX+6 then
-                clearScreen()
-                centerText(8, "Taking you", colors.lime)
-                centerText(9, "to the roof...", colors.lime)
-                sleep(3)
-                clearScreen()
-                centerText(9, "Just kidding.", colors.red)
-                sleep(2)
-                return
-            end
-            -- NO
-            if x >= noX and x <= noX+5 then return end
-        end
-    end
-end
-
--- 8. INPUT LOGIC
-local function getKeypadTouch(x, y)
-    local w, h = mon.getSize()
-    
-    -- RECALCULATE LAYOUT TO MATCH DRAWING
-    local btnW = 5
-    local btnH = 3
-    local gap = 1
-    local totalW = (btnW * 3) + (gap * 2)
-    local startX = math.floor((w - totalW) / 2) + 1
-    local startY = 9
-    
-    -- Check bounds
-    if x < startX or y < startY then return nil end
-    
-    local col = math.floor((x - startX) / (btnW + gap)) + 1
-    local row = math.floor((y - startY) / (btnH + gap)) + 1
-    
-    if col >= 1 and col <= 3 and row >= 1 and row <= 4 then
-        local layout = {{7,8,9},{4,5,6},{1,2,3},{-1,0,-2}}
-        return layout[row][col]
-    end
-    return nil
-end
-
-local function runPinProcess(target)
-    local currentPin = ""
-    local entering = true
-    
-    while entering do
-        drawKeypadUI(target.name, currentPin)
-        local event, side, x, y = os.pullEvent("monitor_touch")
-        local digit = getKeypadTouch(x, y)
         
-        if digit then
-            if digit == -1 then currentPin = ""
-            elseif digit >= 0 and #currentPin < 4 then
-                currentPin = currentPin .. digit
-                if #currentPin == 4 then
-                    drawKeypadUI(target.name, currentPin)
-                    sleep(0.2)
-                    if currentPin == target.pin then
-                        return true
-                    else
-                        runTrollSequence()
-                        return false
-                    end
+        -- Check Keypad Clicks
+        if y >= startY then
+            local row = math.floor((y - startY)/3) + 1
+            local col = math.floor((x - startX)/5) + 1
+            if row >=1 and row <=4 and col >=1 and col <=3 then
+                local k = keys[row][col]
+                if k == 'C' then code = ""
+                elseif k == 'OK' then
+                    if code == SECRET_PIN then return true else return false end
+                else
+                    if #code < 4 then code = code .. k end
                 end
             end
         end
     end
-    return false
 end
 
--- 9. MAIN LOOPS
-local myLabel = os.getComputerLabel()
-local myFloorID = tonumber(myLabel)
+-- 8. MAIN LOOP
+drawUI("READY")
 
-local function runUI()
-    while true do
-        drawMainMenu("IDLE - Select Floor")
-        local event, side, x, y = os.pullEvent("monitor_touch")
+while true do
+    local event, side, x, y = os.pullEvent("monitor_touch")
+    
+    -- Check Scroll Buttons (Right Side strip)
+    if x >= w-3 then
+        if y < h/2 and scroll_offset > 0 then
+            scroll_offset = scroll_offset - 1
+            drawUI("SCROLLING...")
+        elseif y >= h/2 and (scroll_offset + visible_count) < #floor_list then
+            scroll_offset = scroll_offset + 1
+            drawUI("SCROLLING...")
+        end
+    
+    -- Check Floor Buttons
+    elseif y >= list_start_y and y < list_end_y then
+        -- Calculate which button index was clicked relative to the screen
+        local relative_index = math.floor((y - list_start_y) / btn_height) + 1
+        local actual_index = relative_index + scroll_offset
         
-        -- Updated hit detection for HD list
-        -- List starts at Y=4, items are 4 high (3 box + 1 gap)
-        -- Formula: (y - 4) / 4
-        local idx = math.floor((y - 4) / 4) + 1 -- Simplified logic
-        
-        -- Validation
-        -- Check if Y is actually inside a button box
-        local localY = (y - 4) % 4
-        local isInsideBox = (localY >= 0 and localY <= 2)
-        
-        if isInsideBox and floors[idx] then
-            local target = floors[idx]
-            animatePress(4 + (idx-1)*4, theme.highlight)
+        if floor_list[actual_index] then
+            local target = floor_list[actual_index]
             
-            local auth = true
+            -- Animate Click
+            local btnY = list_start_y + ((relative_index-1) * btn_height)
+            drawBox(2, btnY, w-5, btn_height-1, colors.lime)
+            sleep(0.1)
+            
+            local access = true
             if target.locked then
-                auth = runPinProcess(target)
+                access = runKeypad(target.name)
             end
             
-            if auth then
-                drawMainMenu("CALLING: " .. target.name)
-                rednet.broadcast({ floor = idx }, "elevator_cmd")
-                sleep(2)
+            if access then
+                drawUI("CALLING: " .. target.name)
+                -- Send the floor ID to your elevator motor computer
+                rednet.broadcast({ floor = target.id }, "elevator_cmd")
+                sleep(1)
+                drawUI("MOVING...")
+            else
+                drawUI("ACCESS DENIED")
+                sleep(1)
+                drawUI("READY")
             end
         end
     end
 end
-
-local function runBeacon()
-    while true do
-        local e, s, sCh, rCh, msg, dist = os.pullEvent("modem_message")
-        if type(msg) == "table" and msg.sProtocol == "elevator_ping" and myFloorID then
-             rednet.send(msg.nSender, { floor = myFloorID, range = dist }, "elevator_pong")
-        end
-    end
-end
-
-parallel.waitForAny(runUI, runBeacon)
