@@ -1,153 +1,124 @@
 -- =========================================================
---  "DYSTOPIAN DOMINANCE" AD PACK
---  Resolution: 42x30 (HD Mode)
---  Theme: Arrogant Flex + Dystopian Subway
+--  SMART-DRAW AD ROTATOR (Auto-Scaling)
+--  Fixes alignment by calculating screen size automatically.
 -- =========================================================
 
--- 1. IMAGE DATA (The "Brand New" Art)
+-- 1. SETUP
+local monitors = { peripheral.find("monitor") }
+if #monitors == 0 then error("No Monitors Found!") end
 
--- AD 1: REACTOR ("The Sun Is Fired")
--- Visual: A yellow sun -> arrow -> trash can
-local reactor_nfp = [[
-000000000000000000000000000000000000000000
-000044440000000000000000000000000000000000
-000444444000000000000000000000000000000000
-004444444400000000000000000000000000000000
-004444444400000000000000000000000000000000
-000444444000000000000000000000000000000000
-000044440000000000000000000000000000000000
-000000000000000000000000000000000000000000
-000000000000111111110000000000000000000000
-000000000000000000011100000000000000000000
-000000000000000000000110000000000000000000
-000000000000000000000000000000777777000000
-000000000000000000000000000007777777700000
-000000000000000000000000000007777777700000
-000000000000000000000000000000777777000000
-000000000000000000000000000000777777000000
-000000000000000000000000000000777777000000
-000000000000000000000000000000777777000000
-000000000000000000000000000000777777000000
-000000000000000000000000000000777777000000
-000000000000000000000000000007777777700000
-000000000000000000000000000007777777700000
-000000000000000000000000000000000000000000
-000000000000000000000000000000000000000000
-000000000000000000000000000000000000000000
-000ffffff000ff00ff00f000f00000000000000000
-00000f000000f000f000ff00f00000000000000000
-00000f000000ffffff00f0f0f00000000000000000
-00000f000000f000f000f00ff00000000000000000
-00000f000000f000f000f000f00000000000000000
-]]
-
--- AD 2: MINERALS ("Error 404")
--- Visual: Blue Screen of Death (Blue BG, White Text)
-local minerals_nfp = [[
-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-bbbbffff000bbbb000ffffbbbbffff000bbbbbbbbb
-bbbbff00ff00bbff00ff00bbbbff00ff00bbbbbbbb
-bbbbff00ff00bbff00ff00bbbbff00ff00bbbbbbbb
-bbbbffffffffbbff00ff00bbbbffffffffbbbbbbbb
-bbbb000000ff00ff00ff00bbbb000000ff00bbbbbb
-bbbb000000ff00ff00ff00bbbb000000ff00bbbbbb
-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-bbbbffff0bbffff0bbffff0bbffff0bbbbbbbbbbbb
-bbbbff00ff0ff00ff0ff00000ff000bbbbbbbbbbbb
-bbbbff00ff0ff0ff00ffff000ff000bbbbbbbbbbbb
-bbbbff00ff0ffff000ff0000000000bbbbbbbbbbbb
-bbbbffff0bbff0ff00ff00000ff000bbbbbbbbbbbb
-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-bbbbffffffbbffff0bbffff0bbffff0bbffff0bbbb
-bbbbff0000bbff00ff0ff00ff0ff00ff0ff0000bbb
-bbbbffff00bbff00ff0ff00ff0ff00ff0ffff0bbbb
-bbbbff0000bbff00ff0ff00ff0ff00ff0000ffbbbb
-bbbbff0000bbffff0bbffff0bbffff0bbffff0bbbb
-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-]]
-
--- AD 3: SUBWAY ("Propaganda")
--- Visual: Dark Gray BG. Red Box. "OBEY" Vibe.
-local subway_nfp = [[
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777eeeee7777eeeee7777eeeee7777777777777
-777777e77777777e777e7777e777e7777777777777
-777777eeeee7777eeeee777777e777777777777777
-777777e77777777e777e777777e777777777777777
-777777eeeee7777e777e777777e777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-7777eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee7777
-7777eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee7777
-7777eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee7777
-7777ee000000000000000000000000000000ee7777
-7777ee00ffff00f000f00ffff00ff00f00f0ee7777
-7777ee00f00000f000f00f00f00f0f0f00f0ee7777
-7777ee00ffff00ffff000ffff00ff00f00f0ee7777
-7777ee00000f00f0f0000f00f00f0f0f00f0ee7777
-7777ee00ffff00f00f000ffff00f00ff00f0ee7777
-7777ee000000000000000000000000000000ee7777
-7777eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee7777
-7777eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee7777
-7777eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee7777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-]]
-
--- 2. FILE INSTALLER
-local function install(filename, data)
-    local f = fs.open(filename, "w")
-    f.write(data)
-    f.close()
+-- 2. DRAWING TOOLS (The Magic Fix)
+local function drawFullScreen(mon, bgColor)
+    mon.setBackgroundColor(bgColor)
+    mon.clear()
 end
 
--- Overwrite old files with the NEW art
-install("reactor.nfp", reactor_nfp)
-install("minerals.nfp", minerals_nfp)
-install("subway.nfp", subway_nfp)
+local function drawBox(mon, x, y, w, h, color)
+    mon.setBackgroundColor(color)
+    -- drawFilledBox uses absolute coordinates, so we do math here
+    paintutils.drawFilledBox(x, y, x+w-1, y+h-1, color)
+end
 
--- 3. SETUP MONITORS
-local monitors = { peripheral.find("monitor") }
-if #monitors == 0 then error("Connect Wired Modems first!") end
+local function centerText(mon, y, text, txtColor, bgColor)
+    local w, h = mon.getSize()
+    if bgColor then 
+        mon.setBackgroundColor(bgColor)
+        -- Draw a full-width background strip for the text
+        mon.setCursorPos(1, y)
+        mon.write(string.rep(" ", w))
+    end
+    -- Calculate exact center
+    local x = math.floor((w - #text) / 2) + 1
+    mon.setCursorPos(x, y)
+    mon.setTextColor(txtColor)
+    mon.write(text)
+end
 
-print("Linked to " .. #monitors .. " monitor(s).")
+-- 3. THE ADS (Procedurally Generated)
 
--- 4. DISPLAY ENGINE
-local function showAd(filename, duration)
-    local image = paintutils.loadImage(filename)
+local function ad_reactor(mon)
+    local w, h = mon.getSize()
+    drawFullScreen(mon, colors.black)
     
+    -- The Sun (Yellow Square in center)
+    local sunSize = 8
+    local sunX = math.floor((w - sunSize)/2) + 1
+    local sunY = math.floor((h/2) - 6)
+    drawBox(mon, sunX, sunY, sunSize, sunSize/2 + 2, colors.yellow)
+    
+    -- "Trash" Icon (Gray box below it)
+    local binW = 10
+    local binX = math.floor((w - binW)/2) + 1
+    local binY = sunY + 8
+    drawBox(mon, binX, binY, binW, 6, colors.gray)
+    
+    -- Text
+    centerText(mon, 3, "THE SUN IS", colors.orange)
+    centerText(mon, 5, "FIRED.", colors.red)
+    
+    centerText(mon, h-3, "WE HAVE THE POWER", colors.lightGray)
+end
+
+local function ad_minerals(mon)
+    local w, h = mon.getSize()
+    -- Blue Screen of Death Background
+    drawFullScreen(mon, colors.blue)
+    
+    -- White Error Box
+    local boxW = 20
+    local boxH = 8
+    local bx = math.floor((w - boxW)/2) + 1
+    local by = math.floor((h - boxH)/2) + 1
+    drawBox(mon, bx, by, boxW, boxH, colors.white)
+    
+    -- Text
+    centerText(mon, 4, "ERROR 404", colors.white, colors.blue)
+    centerText(mon, by+2, "ORES NOT", colors.blue, colors.white)
+    centerText(mon, by+4, "FOUND", colors.blue, colors.white)
+    
+    centerText(mon, h-2, "WE TOOK THEM ALL", colors.white, colors.blue)
+end
+
+local function ad_subway(mon)
+    local w, h = mon.getSize()
+    drawFullScreen(mon, colors.red) -- Aggressive Red Background
+    
+    -- Big Black "Propaganda" Box
+    local margin = 4
+    drawBox(mon, margin, margin, w-(margin*2), h-(margin*2), colors.black)
+    
+    -- Text
+    centerText(mon, 6, "OBEY", colors.white, colors.black)
+    
+    -- Green "Subway" strip
+    local subY = math.floor(h/2) + 2
+    drawBox(mon, margin, subY, w-(margin*2), 3, colors.green)
+    centerText(mon, subY+1, "EAT FRESH", colors.white, colors.green)
+    
+    centerText(mon, h-5, "OR ELSE", colors.red, colors.black)
+end
+
+-- 4. MAIN LOOP
+while true do
+    -- Loop through every connected monitor
     for _, mon in ipairs(monitors) do
         mon.setTextScale(0.5) -- Force HD Mode
         term.redirect(mon)
-        mon.setBackgroundColor(colors.black)
-        mon.clear()
-        paintutils.drawImage(image, 1, 1)
+        
+        -- Run the ads directly
+        ad_reactor(mon)
     end
+    sleep(5)
     
-    term.redirect(term.native())
-    sleep(duration)
-end
-
--- 5. MAIN LOOP
-while true do
-    showAd("reactor.nfp", 8)
-    showAd("minerals.nfp", 8)
-    showAd("subway.nfp", 8)
+    for _, mon in ipairs(monitors) do
+        term.redirect(mon)
+        ad_minerals(mon)
+    end
+    sleep(5)
+    
+    for _, mon in ipairs(monitors) do
+        term.redirect(mon)
+        ad_subway(mon)
+    end
+    sleep(5)
 end
