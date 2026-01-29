@@ -1,72 +1,113 @@
--- MULTI-SCREEN AD ROTATOR
--- Displays 42x30 .nfp images on ALL connected monitors simultaneously
--- Supports: Wired Modems, Multiple Monitor Arrays
+-- =========================================================
+--  MULTI-SCREEN AD ROTATOR (With Embedded EuroCorp Ad)
+--  Resolution: 42x30 (Scale 0.5)
+--  Supports: Multiple Monitors, Auto-Image Generation
+-- =========================================================
 
--- 1. FIND ALL MONITORS
--- We search for every peripheral of type "monitor"
+-- 1. EMBEDDED IMAGE DATA (The "Picture You Sent")
+-- This checks if minerals.nfp exists. If not, it creates it from this text.
+local minerals_nfp_data = [[
+77777777777777777b777777777777777777777777
+7777777777777777bbb77777777777777777777777
+7777777777bbbbbbbbbbbbb7777777777777777777
+777777777bbbbbbbbbbbbbbb777777777777777777
+77777777bbbbbbbbbbbbbbbbb77777777777777777
+7777777bbbbbbbbbbbbbbbbbbb7777777777777777
+7777777bbbbbbbbbbbbbbbbbbb7777777777777777
+7777777bbbbbbbbbbbbbbbbbbb7777777777777777
+7777777bbbbbbbbbbbbbbbbbbb7777777777777777
+77777777bbbbbbbbbbbbbbbbb77777777777777777
+777777777bbbbbbbbbbbbbbb777777777777777777
+7777777777bbbbbbbbbbbbb7777777777777777777
+777777777777bbbbbbbbb777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+000000000000000000000000000000000000000000
+0ffff0f0f0ffff0fffff0ffff0ffff0fffff0ffff0
+0f0000f0f0f00f00f0000f00f0f00f00f0000f00f0
+0fff00f0f0f00f00f0000fff00f00f00f0000fff00
+0f0000f0f0f00f00f0000f0f00f00f00f0000f0f00
+0f0000f0f0f00f00f0000f00f0ffff00f0000f00f0
+]]
+
+local function install_images()
+    if not fs.exists("minerals.nfp") then
+        local file = fs.open("minerals.nfp", "w")
+        file.write(minerals_nfp_data)
+        file.close()
+        print("created minerals.nfp")
+    end
+end
+
+-- 2. FIND ALL MONITORS
+-- This finds every monitor connected via wired modems
 local monitors = { peripheral.find("monitor") }
 
 if #monitors == 0 then
-    error("No Monitors Found! Check your wired modems.")
+    error("No Monitors Found! Connect Wired Modems & Reboot.")
 end
 
-print("Detected " .. #monitors .. " monitor(s).")
+print("System Active: " .. #monitors .. " screens detected.")
 
--- 2. SETUP FUNCTION
--- Sets resolution to 42x30 (Scale 0.5) on all screens
-for i, mon in ipairs(monitors) do
-    mon.setTextScale(0.5)
+-- 3. SETUP RESOLUTION (Apply to all screens)
+install_images() -- Run the installer first
+for _, mon in ipairs(monitors) do
+    mon.setTextScale(0.5) -- Force 42x30 mode
     mon.setBackgroundColor(colors.black)
     mon.clear()
 end
 
--- 3. DISPLAY FUNCTION
+-- 4. DISPLAY FUNCTION (Syncs all screens)
 local function showAd(filename, duration)
-    -- Check if file exists (Safety Check)
+    -- Safety Check: Does file exist?
     if not fs.exists(filename) then
-        -- Print error to the main computer terminal, not the screens
-        print("Warning: Missing file " .. filename)
+        -- Warn user in terminal, but don't crash the screens
+        print("Skipping missing file: " .. filename)
         
-        -- Flash error on screens briefly
+        -- Flash 'Missing' briefly on screens so you know to fix it
         for _, mon in ipairs(monitors) do
             term.redirect(mon)
             mon.setCursorPos(1,1)
             mon.setTextColor(colors.red)
             mon.write("FILE MISSING: " .. filename)
         end
-        sleep(2)
+        sleep(2) 
         return
     end
 
-    -- Load the image into memory once
+    -- Load the image into RAM once
     local image = paintutils.loadImage(filename)
 
-    -- Draw to EVERY monitor
+    -- Paint it onto EVERY monitor simultaneously
     for _, mon in ipairs(monitors) do
-        -- Redirect 'paintutils' to this specific monitor
-        term.redirect(mon)
-        
-        -- Clear and Draw
+        term.redirect(mon)       -- Focus on this monitor
         mon.setBackgroundColor(colors.black)
         mon.clear()
-        paintutils.drawImage(image, 1, 1)
+        paintutils.drawImage(image, 1, 1) -- Draw the NFP image
     end
-
-    -- Restore control to the main computer terminal briefly (good practice)
-    term.redirect(term.native())
     
-    -- Hold the ad
+    -- Return control to main terminal
+    term.redirect(term.native())
     sleep(duration)
 end
 
--- 4. THE MAIN LOOP
+-- 5. MAIN LOOP
 while true do
-    -- Ad 1: Reactor
+    -- Ad 1: Reactor (You still need to make this file!)
     showAd("reactor.nfp", 10)
     
-    -- Ad 2: Minerals (Your EuroCorp Logo)
+    -- Ad 2: Minerals (This one is auto-installed now!)
     showAd("minerals.nfp", 10)
     
-    -- Ad 3: Subway
+    -- Ad 3: Subway (You still need to make this file!)
     showAd("subway.nfp", 10)
 end
