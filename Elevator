@@ -1,90 +1,134 @@
--- CLIENT SCRIPT (Auto-Detect Modem)
--- This loop checks EVERY side to find the modem
+-- WALL MONITOR SCRIPT (Secure)
+-- 1. AUTO-DETECT MODEM
 local sides = rs.getSides()
 local modemFound = false
-
--- 1. Try to open modem on any side
 for _, side in pairs(sides) do
     if peripheral.getType(side) == "modem" then
-        -- We found a modem! Open it.
         rednet.open(side)
         modemFound = true
         break
     end
 end
-
--- 2. Pocket Computer Fallback (Modem is internal/back)
 if not modemFound then
-    -- Pocket computers don't always show up in rs.getSides() the same way
-    if pcall(rednet.open, "back") then
-        modemFound = true
-    end
+    -- Try 'top' as a fallback default
+    pcall(rednet.open, "top")
 end
 
--- 3. Crash if still no modem
-if not modemFound then
-    term.clear()
-    term.setCursorPos(1,1)
-    print("ERROR: No Wireless Modem Found!")
-    print("Please check connection.")
-    print("Current Side: RIGHT (Make sure it is clicked/connected)")
-    error() -- Stop the program
-end
-
--- CONFIGURATION
+-- 2. CONFIGURATION
+-- Locked floors require you to open the computer terminal to type the PIN
 local floors = {
-    [1] = "Lobby",
-    [2] = "Storage",
-    [3] = "Roof"
+    [1] = { name = "Lobby",   locked = false },
+    [2] = { name = "Storage", locked = true, pin = "0000" },
+    [3] = { name = "Roof",    locked = true, pin = "1234" }
 }
 
--- Detect Screen Type (Pocket vs Wall)
+-- 3. SETUP MONITOR
 local mon = peripheral.find("monitor")
-if not mon then 
-    mon = term.current() -- Pocket Computer
-else
-    mon.setTextScale(1)  -- Wall Monitor
+if not mon then
+    print("Error: No Monitor Found!")
+    print("Please attach an Advanced Monitor.")
+    error()
 end
+mon.setTextScale(1)
+
+-- Colors
+local c_bg = colors.black
+local c_btn = colors.blue
+local c_text = colors.white
+local c_lock = colors.red
 
 local function drawUI()
-    mon.setBackgroundColor(colors.black)
+    mon.setBackgroundColor(c_bg)
     mon.clear()
     mon.setCursorPos(1,1)
+    
     mon.setTextColor(colors.cyan)
     mon.write("== ELEVATOR ==")
     
     local w, h = mon.getSize()
     for i = 1, #floors do
-        mon.setCursorPos(2, 2 + (i*2)) 
-        mon.setTextColor(colors.white)
-        mon.write("[" .. i .. "] " .. floors[i])
+        local floor = floors[i]
+        local yPos = 2 + (i * 2)
+        
+        mon.setCursorPos(2, yPos)
+        if floor.locked then
+            mon.setTextColor(c_lock)
+            mon.write("[" .. i .. "] " .. floor.name .. " [L]")
+        else
+            mon.setTextColor(c_text)
+            mon.write("[" .. i .. "] " .. floor.name)
+        end
     end
     
     mon.setCursorPos(2, h-1)
     mon.setTextColor(colors.yellow)
-    mon.write("Select Floor...")
+    mon.write("Touch to Select")
 end
 
 while true do
     drawUI()
     
-    local event, side, x, y = os.pullEvent()
-    local selectedFloor = nil
+    -- Wait for touch
+    local event, side, x, y = os.pullEvent("monitor_touch")
     
-    if event == "monitor_touch" or event == "mouse_click" then
-        if y == 4 then selectedFloor = 1 end
-        if y == 6 then selectedFloor = 2 end
-        if y == 8 then selectedFloor = 3 end
-    elseif event == "char" then
-        selectedFloor = tonumber(side)
-    end
+    -- Calculate floor index from Y position (Buttons at 4, 6, 8...)
+    -- Math: (y - 2) / 2
+    local clickedIndex = (y - 2) / 2
     
-    if selectedFloor and floors[selectedFloor] then
-        mon.setCursorPos(1, 10)
-        mon.setTextColor(colors.lime)
-        mon.write(">> CALLING " .. selectedFloor .. " <<")
+    if clickedIndex == math.floor(clickedIndex) and floors[clickedIndex] then
+        local target = floors[clickedIndex]
+        local authorized = true
         
-        rednet.broadcast({ floor = selectedFloor }, "elevator_cmd")
-        sleep(2)
+        -- Animation: Show selection
+        mon.setCursorPos(2, y)
+        mon.setTextColor(colors.yellow)
+        mon.write(">> CHECKING <<")
+        
+        if target.locked then
+            -- INSTRUCTION PHASE
+            mon.setBackgroundColor(colors.black)
+            mon.clear()
+            mon.setCursorPos(1, 3)
+            mon.setTextColor(colors.red)
+            mon.write("SECURE FLOOR")
+            mon.setCursorPos(1, 5)
+            mon.setTextColor(colors.white)
+            mon.write("Type PIN on")
+            mon.setCursorPos(1, 6)
+            mon.write("Computer Keyboard")
+            
+            -- TERMINAL PHASE (User must use the block)
+            term.clear()
+            term.setCursorPos(1,1)
+            print("SECURITY CHECK")
+            print("Target: " .. target.name)
+            print("Please enter PIN:")
+            term.write("> ")
+            
+            local input = read("*") -- Reads from the Keyboard, hides text
+            
+            if input ~= target.pin then
+                authorized = false
+                mon.setCursorPos(1, 8)
+                mon.setTextColor(colors.red)
+                mon.write("ACCESS DENIED")
+                print("Incorrect PIN.")
+                sleep(2)
+            else
+                print("PIN Accepted.")
+            end
+        end
+        
+        if authorized then
+            mon.setBackgroundColor(colors.black)
+            mon.clear()
+            mon.setCursorPos(1, 4)
+            mon.setTextColor(colors.lime)
+            mon.write("CALLING: " .. target.name)
+            
+            -- Send the signal
+            rednet.broadcast({ floor = clickedIndex }, "elevator_cmd")
+            sleep(2)
+        end
     end
 end
