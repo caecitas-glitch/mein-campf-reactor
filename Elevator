@@ -1,19 +1,34 @@
--- CLIENT SCRIPT (Pocket & Wall)
--- 1. OPEN THE MODEM
--- We try "back" first (for Pocket Computers)
--- If that fails, we try "top" (Common for Wall Computers)
--- CHANGE "top" below if you placed your modem on the right/left/etc!
-pcall(rednet.open, "back")
-pcall(rednet.open, "top") 
+-- CLIENT SCRIPT (Auto-Detect Modem)
+-- This loop checks EVERY side to find the modem
+local sides = rs.getSides()
+local modemFound = false
 
--- 2. Verify connection
-if not rednet.isOpen() then
-    print("ERROR: No Modem Found!")
-    print("Place a Wireless Modem on the Computer.")
-    print("Pocket Computer: It is built-in (Back).")
-    print("Wall Computer: Place it on Top/Side.")
-    sleep(5)
-    os.reboot()
+-- 1. Try to open modem on any side
+for _, side in pairs(sides) do
+    if peripheral.getType(side) == "modem" then
+        -- We found a modem! Open it.
+        rednet.open(side)
+        modemFound = true
+        break
+    end
+end
+
+-- 2. Pocket Computer Fallback (Modem is internal/back)
+if not modemFound then
+    -- Pocket computers don't always show up in rs.getSides() the same way
+    if pcall(rednet.open, "back") then
+        modemFound = true
+    end
+end
+
+-- 3. Crash if still no modem
+if not modemFound then
+    term.clear()
+    term.setCursorPos(1,1)
+    print("ERROR: No Wireless Modem Found!")
+    print("Please check connection.")
+    print("Current Side: RIGHT (Make sure it is clicked/connected)")
+    error() -- Stop the program
 end
 
 -- CONFIGURATION
@@ -23,7 +38,7 @@ local floors = {
     [3] = "Roof"
 }
 
--- Detect Screen Type
+-- Detect Screen Type (Pocket vs Wall)
 local mon = peripheral.find("monitor")
 if not mon then 
     mon = term.current() -- Pocket Computer
@@ -69,7 +84,6 @@ while true do
         mon.setTextColor(colors.lime)
         mon.write(">> CALLING " .. selectedFloor .. " <<")
         
-        -- Broadcast Command
         rednet.broadcast({ floor = selectedFloor }, "elevator_cmd")
         sleep(2)
     end
