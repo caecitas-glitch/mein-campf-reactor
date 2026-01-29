@@ -1,113 +1,153 @@
 -- =========================================================
---  MULTI-SCREEN AD ROTATOR (With Embedded EuroCorp Ad)
---  Resolution: 42x30 (Scale 0.5)
---  Supports: Multiple Monitors, Auto-Image Generation
+--  "DYSTOPIAN DOMINANCE" AD PACK
+--  Resolution: 42x30 (HD Mode)
+--  Theme: Arrogant Flex + Dystopian Subway
 -- =========================================================
 
--- 1. EMBEDDED IMAGE DATA (The "Picture You Sent")
--- This checks if minerals.nfp exists. If not, it creates it from this text.
-local minerals_nfp_data = [[
-77777777777777777b777777777777777777777777
-7777777777777777bbb77777777777777777777777
-7777777777bbbbbbbbbbbbb7777777777777777777
-777777777bbbbbbbbbbbbbbb777777777777777777
-77777777bbbbbbbbbbbbbbbbb77777777777777777
-7777777bbbbbbbbbbbbbbbbbbb7777777777777777
-7777777bbbbbbbbbbbbbbbbbbb7777777777777777
-7777777bbbbbbbbbbbbbbbbbbb7777777777777777
-7777777bbbbbbbbbbbbbbbbbbb7777777777777777
-77777777bbbbbbbbbbbbbbbbb77777777777777777
-777777777bbbbbbbbbbbbbbb777777777777777777
-7777777777bbbbbbbbbbbbb7777777777777777777
-777777777777bbbbbbbbb777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
-777777777777777777777777777777777777777777
+-- 1. IMAGE DATA (The "Brand New" Art)
+
+-- AD 1: REACTOR ("The Sun Is Fired")
+-- Visual: A yellow sun -> arrow -> trash can
+local reactor_nfp = [[
 000000000000000000000000000000000000000000
-0ffff0f0f0ffff0fffff0ffff0ffff0fffff0ffff0
-0f0000f0f0f00f00f0000f00f0f00f00f0000f00f0
-0fff00f0f0f00f00f0000fff00f00f00f0000fff00
-0f0000f0f0f00f00f0000f0f00f00f00f0000f0f00
-0f0000f0f0f00f00f0000f00f0ffff00f0000f00f0
+000044440000000000000000000000000000000000
+000444444000000000000000000000000000000000
+004444444400000000000000000000000000000000
+004444444400000000000000000000000000000000
+000444444000000000000000000000000000000000
+000044440000000000000000000000000000000000
+000000000000000000000000000000000000000000
+000000000000111111110000000000000000000000
+000000000000000000011100000000000000000000
+000000000000000000000110000000000000000000
+000000000000000000000000000000777777000000
+000000000000000000000000000007777777700000
+000000000000000000000000000007777777700000
+000000000000000000000000000000777777000000
+000000000000000000000000000000777777000000
+000000000000000000000000000000777777000000
+000000000000000000000000000000777777000000
+000000000000000000000000000000777777000000
+000000000000000000000000000000777777000000
+000000000000000000000000000007777777700000
+000000000000000000000000000007777777700000
+000000000000000000000000000000000000000000
+000000000000000000000000000000000000000000
+000000000000000000000000000000000000000000
+000ffffff000ff00ff00f000f00000000000000000
+00000f000000f000f000ff00f00000000000000000
+00000f000000ffffff00f0f0f00000000000000000
+00000f000000f000f000f00ff00000000000000000
+00000f000000f000f000f000f00000000000000000
 ]]
 
-local function install_images()
-    if not fs.exists("minerals.nfp") then
-        local file = fs.open("minerals.nfp", "w")
-        file.write(minerals_nfp_data)
-        file.close()
-        print("created minerals.nfp")
-    end
+-- AD 2: MINERALS ("Error 404")
+-- Visual: Blue Screen of Death (Blue BG, White Text)
+local minerals_nfp = [[
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbffff000bbbb000ffffbbbbffff000bbbbbbbbb
+bbbbff00ff00bbff00ff00bbbbff00ff00bbbbbbbb
+bbbbff00ff00bbff00ff00bbbbff00ff00bbbbbbbb
+bbbbffffffffbbff00ff00bbbbffffffffbbbbbbbb
+bbbb000000ff00ff00ff00bbbb000000ff00bbbbbb
+bbbb000000ff00ff00ff00bbbb000000ff00bbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbffff0bbffff0bbffff0bbffff0bbbbbbbbbbbb
+bbbbff00ff0ff00ff0ff00000ff000bbbbbbbbbbbb
+bbbbff00ff0ff0ff00ffff000ff000bbbbbbbbbbbb
+bbbbff00ff0ffff000ff0000000000bbbbbbbbbbbb
+bbbbffff0bbff0ff00ff00000ff000bbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbffffffbbffff0bbffff0bbffff0bbffff0bbbb
+bbbbff0000bbff00ff0ff00ff0ff00ff0ff0000bbb
+bbbbffff00bbff00ff0ff00ff0ff00ff0ffff0bbbb
+bbbbff0000bbff00ff0ff00ff0ff00ff0000ffbbbb
+bbbbff0000bbffff0bbffff0bbffff0bbffff0bbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+]]
+
+-- AD 3: SUBWAY ("Propaganda")
+-- Visual: Dark Gray BG. Red Box. "OBEY" Vibe.
+local subway_nfp = [[
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777eeeee7777eeeee7777eeeee7777777777777
+777777e77777777e777e7777e777e7777777777777
+777777eeeee7777eeeee777777e777777777777777
+777777e77777777e777e777777e777777777777777
+777777eeeee7777e777e777777e777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+7777eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee7777
+7777eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee7777
+7777eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee7777
+7777ee000000000000000000000000000000ee7777
+7777ee00ffff00f000f00ffff00ff00f00f0ee7777
+7777ee00f00000f000f00f00f00f0f0f00f0ee7777
+7777ee00ffff00ffff000ffff00ff00f00f0ee7777
+7777ee00000f00f0f0000f00f00f0f0f00f0ee7777
+7777ee00ffff00f00f000ffff00f00ff00f0ee7777
+7777ee000000000000000000000000000000ee7777
+7777eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee7777
+7777eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee7777
+7777eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee7777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+777777777777777777777777777777777777777777
+]]
+
+-- 2. FILE INSTALLER
+local function install(filename, data)
+    local f = fs.open(filename, "w")
+    f.write(data)
+    f.close()
 end
 
--- 2. FIND ALL MONITORS
--- This finds every monitor connected via wired modems
+-- Overwrite old files with the NEW art
+install("reactor.nfp", reactor_nfp)
+install("minerals.nfp", minerals_nfp)
+install("subway.nfp", subway_nfp)
+
+-- 3. SETUP MONITORS
 local monitors = { peripheral.find("monitor") }
+if #monitors == 0 then error("Connect Wired Modems first!") end
 
-if #monitors == 0 then
-    error("No Monitors Found! Connect Wired Modems & Reboot.")
-end
+print("Linked to " .. #monitors .. " monitor(s).")
 
-print("System Active: " .. #monitors .. " screens detected.")
-
--- 3. SETUP RESOLUTION (Apply to all screens)
-install_images() -- Run the installer first
-for _, mon in ipairs(monitors) do
-    mon.setTextScale(0.5) -- Force 42x30 mode
-    mon.setBackgroundColor(colors.black)
-    mon.clear()
-end
-
--- 4. DISPLAY FUNCTION (Syncs all screens)
+-- 4. DISPLAY ENGINE
 local function showAd(filename, duration)
-    -- Safety Check: Does file exist?
-    if not fs.exists(filename) then
-        -- Warn user in terminal, but don't crash the screens
-        print("Skipping missing file: " .. filename)
-        
-        -- Flash 'Missing' briefly on screens so you know to fix it
-        for _, mon in ipairs(monitors) do
-            term.redirect(mon)
-            mon.setCursorPos(1,1)
-            mon.setTextColor(colors.red)
-            mon.write("FILE MISSING: " .. filename)
-        end
-        sleep(2) 
-        return
-    end
-
-    -- Load the image into RAM once
     local image = paintutils.loadImage(filename)
-
-    -- Paint it onto EVERY monitor simultaneously
+    
     for _, mon in ipairs(monitors) do
-        term.redirect(mon)       -- Focus on this monitor
+        mon.setTextScale(0.5) -- Force HD Mode
+        term.redirect(mon)
         mon.setBackgroundColor(colors.black)
         mon.clear()
-        paintutils.drawImage(image, 1, 1) -- Draw the NFP image
+        paintutils.drawImage(image, 1, 1)
     end
     
-    -- Return control to main terminal
     term.redirect(term.native())
     sleep(duration)
 end
 
 -- 5. MAIN LOOP
 while true do
-    -- Ad 1: Reactor (You still need to make this file!)
-    showAd("reactor.nfp", 10)
-    
-    -- Ad 2: Minerals (This one is auto-installed now!)
-    showAd("minerals.nfp", 10)
-    
-    -- Ad 3: Subway (You still need to make this file!)
-    showAd("subway.nfp", 10)
+    showAd("reactor.nfp", 8)
+    showAd("minerals.nfp", 8)
+    showAd("subway.nfp", 8)
 end
