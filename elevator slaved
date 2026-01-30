@@ -1,0 +1,28 @@
+-- SLAVE SERVER (Wired)
+-- Run this on Computers B and C
+-- Connect Network Cable to the BACK
+
+local wiredSide = "back"
+peripheral.find("modem", rednet.open) -- Auto-open wired modem
+
+local myID = os.getComputerID()
+print("-----------------------------")
+print("SLAVE COMPUTER RUNNING")
+print("MY ID: " .. myID)
+print("-----------------------------")
+print("Waiting for Master commands...")
+
+while true do
+    -- Listen for Wired messages from Master
+    local senderId, message, protocol = rednet.receive("internal_bus")
+    
+    -- Message format: { side = "top" }
+    if type(message) == "table" and message.side then
+        print("Pulsing side: " .. message.side)
+        
+        -- Pulse the Redstone Link attached to this side
+        redstone.setOutput(message.side, true)
+        sleep(1.0) -- Hold signal for 1 second
+        redstone.setOutput(message.side, false)
+    end
+end
