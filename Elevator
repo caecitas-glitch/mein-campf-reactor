@@ -1,176 +1,252 @@
--- HALLWAY CLIENT (Touch Keypad Version)
+-- ADVANCED ELEVATOR CLIENT (Scrollable UI)
 local monitor = peripheral.find("monitor")
 peripheral.find("modem", rednet.open)
 
--- [!] CONFIGURATION [!]
-local SERVER_ID = 6      -- Hardcoded Master ID
-local PIN_CODE = "1234"  -- Your Password
-local lockedFloors = { [-1]=true, [-2]=true }
+-- [!] CONFIGURATION [!] ----------------------
+local SERVER_ID = 6      -- Your Master Server ID
+local PIN_CODE = "1234"  -- Global PIN
 
--- UI VARS
-monitor.setTextScale(0.5)
+-- Define your floors here (Order matters for the list!)
+-- format: { id = Number, name = "Text", locked = Boolean }
+local floorList = {
+    { id = 10, name = "Penthouse",    locked = false },
+    { id = 9,  name = "Observatory",  locked = false },
+    { id = 8,  name = "Hydroponics",  locked = false },
+    { id = 7,  name = "Crew Quarters",locked = false },
+    { id = 6,  name = "Medical Bay",  locked = false },
+    { id = 5,  name = "Cafeteria",    locked = false },
+    { id = 4,  name = "Engineering",  locked = false },
+    { id = 3,  name = "Workshop",     locked = false },
+    { id = 2,  name = "Storage A",    locked = false },
+    { id = 1,  name = "Storage B",    locked = false },
+    { id = 0,  name = "Main Lobby",   locked = false },
+    { id = -1, name = "Security",     locked = true },
+    { id = -2, name = "The Vault",    locked = true },
+}
+-----------------------------------------------
+
+-- UI VARIABLES
+monitor.setTextScale(0.5) -- High resolution for text list
 local w, h = monitor.getSize()
-local state = "main" 
+local scrollOffset = 0    -- Which item is at the top?
+local itemsPerPage = 6    -- How many fit on screen?
+local state = "main"      -- 'main', 'pin'
 local targetFloor = nil
 local pinBuffer = ""
-local allFloors = {-2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+local statusMsg = "READY"
+
+-- COLORS
+local C_BG = colors.black
+local C_ITEM = colors.blue
+local C_LOCKED = colors.red
+local C_TEXT = colors.white
+local C_ACCENT = colors.lightGray
 
 -- DRAWING UTILS
-local function clear(c) monitor.setBackgroundColor(c); monitor.clear() end
-
-local function drawButton(x, y, w, h, text, bg, fg)
-    monitor.setBackgroundColor(bg)
-    monitor.setTextColor(fg)
-    for i=0, h-1 do
-        monitor.setCursorPos(x, y+i)
-        monitor.write(string.rep(" ", w))
+local function clear() monitor.setBackgroundColor(C_BG); monitor.clear() end
+local function drawBox(x, y, w, h, color)
+    monitor.setBackgroundColor(color)
+    for i=0,h-1 do
+        monitor.setCursorPos(x,y+i); monitor.write(string.rep(" ", w))
     end
-    monitor.setCursorPos(x + math.floor((w-#text)/2), y + math.floor(h/2))
+end
+local function centerText(y, text, bg, fg)
+    monitor.setBackgroundColor(bg); monitor.setTextColor(fg)
+    monitor.setCursorPos(math.floor((w-#text)/2)+1, y)
     monitor.write(text)
 end
 
--- SCENE: MAIN MENU
-local function drawMain()
-    clear(colors.black)
-    monitor.setCursorPos(math.floor((w-16)/2)+1, 2)
-    monitor.setTextColor(colors.white)
-    monitor.write("ELEVATOR CONTROL")
+-- SCENE: SCROLLABLE LIST
+local function drawList()
+    clear()
     
-    local startX, startY = 3, 5
-    local btnW, btnH, gap = 6, 3, 1
+    -- 1. Header / Status Bar
+    drawBox(1, 1, w, 3, C_ACCENT)
+    centerText(2, "ELEVATOR: " .. statusMsg, C_ACCENT, colors.black)
     
-    for i, floor in ipairs(allFloors) do
-        local col = (i-1) % 5
-        local row = math.floor((i-1) / 5)
-        local x = startX + (col * (btnW + gap))
-        local y = startY + (row * (btnH + gap))
+    -- 2. Scroll Controls (Right Sidebar)
+    local barX = w - 4
+    drawBox(barX, 4, 5, h-3, colors.gray) -- Bar background
+    
+    -- Up Arrow
+    drawBox(barX, 4, 5, 3, colors.lightGray)
+    monitor.setTextColor(colors.black)
+    monitor.setCursorPos(barX+2, 5); monitor.write("^")
+    
+    -- Down Arrow
+    drawBox(barX, h-2, 5, 3, colors.lightGray)
+    monitor.setCursorPos(barX+2, h-1); monitor.write("v")
+    
+    -- 3. The List Items
+    local startY = 5
+    local itemH = 4 -- Height of each button including gap
+    -- Recalculate items per page based on actual height
+    itemsPerPage = math.floor((h - 6) / itemH)
+    
+    for i = 0, itemsPerPage - 1 do
+        local index = scrollOffset + i + 1
+        local item = floorList[index]
         
-        local color = colors.blue
-        if lockedFloors[floor] then color = colors.red end
-        
-        drawButton(x, y, btnW, btnH, tostring(floor), color, colors.white)
+        if item then
+            local y = startY + (i * itemH)
+            local col = item.locked and C_LOCKED or C_ITEM
+            
+            -- Draw Button Box
+            drawBox(2, y, w - 8, itemH - 1, col)
+            
+            -- Draw Text (Floor ID + Name)
+            monitor.setTextColor(C_TEXT)
+            monitor.setCursorPos(4, y + 1)
+            monitor.write("[F" .. item.id .. "] " .. item.name)
+            
+            -- Lock Icon
+            if item.locked then
+                monitor.setCursorPos(w - 12, y + 1)
+                monitor.write("LOCKED")
+            end
+        end
     end
 end
 
--- SCENE: NUMPAD KEYPAD
+-- SCENE: PIN PAD (Unchanged but styled)
 local function drawPin()
-    clear(colors.gray)
-    monitor.setCursorPos(math.floor((w-15)/2)+1, 3)
-    monitor.setTextColor(colors.red)
-    monitor.write("LOCKED ACCESS")
+    clear()
+    centerText(2, "SECURITY ACCESS", C_LOCKED, colors.white)
+    centerText(4, "Target: " .. (targetFloor and targetFloor.name or "???"), C_BG, colors.white)
     
-    -- PIN Display Box
-    local dispX = math.floor(w/2) - 4
-    monitor.setBackgroundColor(colors.black)
-    monitor.setTextColor(colors.white)
-    monitor.setCursorPos(dispX, 5)
+    -- Input Box
+    monitor.setCursorPos(math.floor(w/2)-4, 6)
+    monitor.setBackgroundColor(colors.gray)
     monitor.write(" " .. string.rep("*", #pinBuffer) .. "_ ")
     
-    -- Draw Numpad Grid
+    -- Numpad
     local keys = {"1","2","3","4","5","6","7","8","9","C","0","OK"}
-    local startX = math.floor(w/2) - 6
-    local startY = 8
-    local btnW, btnH = 3, 2
+    local btnW, btnH = 5, 3
     local gap = 1
+    local totalW = (3 * btnW) + (2 * gap)
+    local startX = math.floor((w - totalW)/2) + 1
+    local startY = 9
     
     for i, key in ipairs(keys) do
         local col = (i-1)%3
         local row = math.floor((i-1)/3)
-        local x = startX + (col * (btnW + gap))
-        local y = startY + (row * (btnH + gap))
+        local x = startX + (col * (btnW+gap))
+        local y = startY + (row * (btnH+gap))
         
         local bg = colors.lightGray
         if key == "C" then bg = colors.orange end
         if key == "OK" then bg = colors.lime end
         
-        drawButton(x, y, btnW, btnH, key, bg, colors.black)
+        drawBox(x, y, btnW, btnH, bg)
+        monitor.setTextColor(colors.black)
+        monitor.setCursorPos(x + math.floor(btnW/2), y + math.floor(btnH/2))
+        monitor.write(key)
     end
 end
 
 -- LOGIC
-local function sendRequest(f)
-    clear(colors.black)
-    monitor.setCursorPos(math.floor((w-15)/2)+1, h/2)
-    monitor.setTextColor(colors.yellow)
-    monitor.write("CALLING FLOOR " .. f)
-    rednet.send(SERVER_ID, {floor=f}, "elevator_request")
-    sleep(1.5)
+local function sendRequest(floorItem)
+    statusMsg = "GOING TO " .. string.upper(floorItem.name)
+    drawList()
+    
+    rednet.send(SERVER_ID, {floor=floorItem.id}, "elevator_request")
+    
+    sleep(2) -- Show the message for 2 seconds
+    statusMsg = "READY"
     state = "main"
-    pinBuffer = ""
-    drawMain()
+    drawList()
 end
 
-drawMain()
-
-while true do
-    local event, side, x, y = os.pullEvent("monitor_touch")
-    
+-- TOUCH HANDLER
+local function handleTouch(x, y)
     if state == "main" then
-        -- Main Menu Hit Detection
-        local startX, startY = 3, 5
-        local btnW, btnH, gap = 6, 3, 1
+        -- 1. Check Scroll Arrows (Right Side)
+        if x > w - 5 then
+            if y < h/2 then
+                -- Scroll Up
+                if scrollOffset > 0 then 
+                    scrollOffset = scrollOffset - 1 
+                    drawList()
+                end
+            else
+                -- Scroll Down
+                if scrollOffset + itemsPerPage < #floorList then 
+                    scrollOffset = scrollOffset + 1 
+                    drawList()
+                end
+            end
+            return
+        end
         
-        for i, floor in ipairs(allFloors) do
-            local col = (i-1) % 5
-            local row = math.floor((i-1) / 5)
-            local bx = startX + (col * (btnW + gap))
-            local by = startY + (row * (btnH + gap))
+        -- 2. Check List Items
+        -- Inverse logic of drawing to find which item was clicked
+        local startY = 5
+        local itemH = 4
+        
+        -- Adjust Y relative to the start of the list
+        local listY = y - startY
+        if listY >= 0 then
+            local clickedIndex = math.floor(listY / itemH)
+            local actualIndex = scrollOffset + clickedIndex + 1
             
-            if x >= bx and x < bx+btnW and y >= by and y < by+btnH then
-                if lockedFloors[floor] then
-                    targetFloor = floor
+            -- Check if valid item and clicked within button height
+            if floorList[actualIndex] and (listY % itemH) < (itemH - 1) then
+                local item = floorList[actualIndex]
+                
+                if item.locked then
+                    targetFloor = item
                     state = "pin"
                     pinBuffer = ""
                     drawPin()
                 else
-                    sendRequest(floor)
+                    sendRequest(item)
                 end
             end
         end
-        
+
     elseif state == "pin" then
-        -- Keypad Hit Detection
+        -- Keypad Logic (Same as before)
+        -- Quick math for keypad hitboxes based on drawPin
+        local btnW, btnH, gap = 5, 3, 1
+        local totalW = (3 * btnW) + (2 * gap)
+        local startX = math.floor((w - totalW)/2) + 1
+        local startY = 9
+        
         local keys = {"1","2","3","4","5","6","7","8","9","C","0","OK"}
-        local startX = math.floor(w/2) - 6
-        local startY = 8
-        local btnW, btnH, gap = 3, 2, 1
         
         for i, key in ipairs(keys) do
             local col = (i-1)%3
             local row = math.floor((i-1)/3)
-            local bx = startX + (col * (btnW + gap))
-            local by = startY + (row * (btnH + gap))
+            local bx = startX + (col * (btnW+gap))
+            local by = startY + (row * (btnH+gap))
             
             if x >= bx and x < bx+btnW and y >= by and y < by+btnH then
                 if key == "C" then
-                    -- Clear / Cancel
-                    if #pinBuffer > 0 then
-                        pinBuffer = ""
-                        drawPin()
-                    else
-                        state = "main"
-                        drawMain()
-                    end
+                    state = "main"; drawList()
                 elseif key == "OK" then
-                    -- Submit
                     if pinBuffer == PIN_CODE then
                         sendRequest(targetFloor)
                     else
-                        monitor.setBackgroundColor(colors.red)
-                        monitor.setCursorPos(math.floor(w/2) - 4, 5)
-                        monitor.write(" ERROR! ")
-                        sleep(0.5)
+                        -- Error Flash
+                        local old = monitor.getBackgroundColor()
+                        monitor.setBackgroundColor(colors.red); monitor.clear()
+                        sleep(0.1); drawPin() -- Reset
                         pinBuffer = ""
-                        drawPin()
                     end
                 else
-                    -- Number buttons
-                    if #pinBuffer < 4 then
-                        pinBuffer = pinBuffer .. key
+                    if #pinBuffer < 4 then 
+                        pinBuffer = pinBuffer .. key 
                         drawPin()
                     end
                 end
             end
         end
     end
+end
+
+-- MAIN LOOP
+drawList()
+while true do
+    local event, side, x, y = os.pullEvent("monitor_touch")
+    handleTouch(x, y)
 end
