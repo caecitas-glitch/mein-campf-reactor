@@ -1,189 +1,140 @@
--- SMART POCKET (Troll Edition)
+-- POCKET ELEVATOR REMOTE
+peripheral.find("modem", rednet.open)
 
-if peripheral.getType("back") == "modem" then
-    rednet.open("back")
-else
-    error("No Wireless Modem!")
-end
+-- [!] CONFIGURATION [!]
+local SERVER_ID = 6
+local PIN_CODE = "1234"
 
--- CONFIGURATION (Reverted to 3 floors)
-local floors = {
-    [1] = { name = "Lobby",   locked = false },
-    [2] = { name = "Storage", locked = false },
-    [3] = { name = "Roof",    locked = true, pin = "5555" }
+-- SAME FLOOR LIST AS WALL SCREENS
+local floorList = {
+    { id = 10, name = "Penthouse",    locked = false },
+    { id = 9,  name = "Observatory",  locked = false },
+    { id = 8,  name = "Hydroponics",  locked = false },
+    { id = 7,  name = "Crew Qt.",     locked = false },
+    { id = 6,  name = "Medical Bay",  locked = false },
+    { id = 5,  name = "Cafeteria",    locked = false },
+    { id = 4,  name = "Engineering",  locked = false },
+    { id = 3,  name = "Workshop",     locked = false },
+    { id = 2,  name = "Storage A",    locked = false },
+    { id = 1,  name = "Storage B",    locked = false },
+    { id = 0,  name = "Main Lobby",   locked = false },
+    { id = -1, name = "Security",     locked = true },
+    { id = -2, name = "The Vault",    locked = true },
 }
 
--- COLORS
-local c_bg = colors.black
-local c_text = colors.white
-local c_lock = colors.red
-local c_gps_btn = colors.orange
+-- UI VARS
+local w, h = term.getSize()
+local scroll = 0
+local state = "list" -- 'list', 'pin', 'sent'
+local target = nil
+local pinBuf = ""
 
-local function drawMenu()
-    term.setBackgroundColor(c_bg)
-    term.clear()
-    term.setCursorPos(1,1)
-    term.setTextColor(colors.cyan)
-    print("== ELEVATOR ==")
+-- DRAWING TOOLS
+local function clear(c) term.setBackgroundColor(c); term.clear() end
+local function center(y, t, bg, fg)
+    term.setBackgroundColor(bg); term.setTextColor(fg)
+    term.setCursorPos(math.floor((w-#t)/2)+1, y)
+    term.write(t)
+end
+
+local function drawList()
+    clear(colors.black)
+    -- Header
+    term.setCursorPos(1,1); term.setBackgroundColor(colors.gray)
+    term.clearLine(); center(1, "ELEVATOR REMOTE", colors.gray, colors.white)
     
-    for i = 1, #floors do
-        local f = floors[i]
-        term.setCursorPos(2, 3+(i*2))
-        if f.locked then
-            term.setTextColor(c_lock)
-            write("["..i.."] "..f.name.." [L]")
-        else
-            term.setTextColor(c_text)
-            write("["..i.."] "..f.name)
+    -- List
+    local visibleCount = h - 2
+    for i = 0, visibleCount - 1 do
+        local idx = scroll + i + 1
+        local item = floorList[idx]
+        if item then
+            local y = 2 + i + 1
+            local bg = item.locked and colors.red or colors.blue
+            if item.locked then bg = colors.brown end -- Darker red for pocket
+            
+            term.setBackgroundColor(bg)
+            term.setCursorPos(1, y)
+            term.clearLine()
+            
+            term.setTextColor(colors.white)
+            term.write(" " .. item.name)
+            
+            -- Floor Number on right
+            local numStr = tostring(item.id)
+            term.setCursorPos(w - #numStr, y)
+            term.write(numStr)
         end
     end
     
-    term.setCursorPos(2, 16)
-    term.setBackgroundColor(c_gps_btn)
-    term.setTextColor(colors.white)
-    write(" [ O ] SCAN FOR ME ")
-    term.setBackgroundColor(c_bg)
+    -- Scroll Bar Hint
+    if scroll > 0 then 
+        term.setCursorPos(w, 2); term.setBackgroundColor(colors.black); term.write("^") 
+    end
+    if scroll + visibleCount < #floorList then
+        term.setCursorPos(w, h); term.setBackgroundColor(colors.black); term.write("v") 
+    end
 end
 
--- SCANNING
-local function scanForFloor()
-    term.setCursorPos(2, 18)
-    term.setTextColor(colors.yellow)
-    write("Pinging...")
-    rednet.broadcast("LOCATE", "elevator_ping")
+local function drawPin()
+    clear(colors.gray)
+    center(2, "LOCKED", colors.red, colors.white)
+    center(4, target.name, colors.gray, colors.white)
     
-    local closestFloor = nil
-    local shortestDist = 9999
-    local timerID = os.startTimer(1)
+    term.setCursorPos(1, 6)
+    term.setBackgroundColor(colors.black)
+    term.clearLine()
+    center(6, pinBuf, colors.black, colors.white)
     
-    while true do
-        local event, id, msg, protocol = os.pullEvent()
-        if event == "timer" and id == timerID then break
-        elseif event == "rednet_message" and protocol == "elevator_pong" then
-            if type(msg) == "table" and msg.floor and msg.range then
-                if msg.range < shortestDist then
-                    shortestDist = msg.range
-                    closestFloor = msg.floor
+    center(h-2, "Type PIN", colors.gray, colors.lightGray)
+end
+
+local function send(item)
+    clear(colors.black)
+    center(h/2, "CALLING...", colors.black, colors.yellow)
+    rednet.send(SERVER_ID, {floor=item.id}, "elevator_request")
+    sleep(1)
+    state = "list"
+    drawList()
+end
+
+-- LOGIC
+drawList()
+while true do
+    local event, p1, x, y = os.pullEvent()
+    
+    if state == "list" then
+        if event == "mouse_click" or event == "monitor_touch" then
+            -- Scroll Logic (Top/Bottom edges)
+            if y == 2 and scroll > 0 then scroll = scroll - 1; drawList()
+            elseif y == h and scroll + (h-2) < #floorList then scroll = scroll + 1; drawList()
+            
+            -- Click Item Logic
+            elseif y > 1 and y <= h then
+                local listIdx = y - 2
+                local realIdx = scroll + listIdx + 1
+                local item = floorList[realIdx]
+                if item then
+                    if item.locked then
+                        target = item; state = "pin"; pinBuf = ""; drawPin()
+                    else
+                        send(item)
+                    end
                 end
             end
-        end
-    end
-    return closestFloor
-end
-
--- TROLL LOGIC
-local function runTrollSequence()
-    term.setBackgroundColor(c_bg)
-    term.clear()
-    term.setCursorPos(1,1)
-    term.setTextColor(colors.white)
-    
-    print("Did you actually put")
-    print("the right password?")
-    print("Its nearly impossible")
-    print("to code a password")
-    print("guarded code for")
-    print("something this stupid")
-    
-    term.setCursorPos(2, 10)
-    term.setTextColor(colors.green)
-    write("[ YES ]")
-    
-    term.setCursorPos(15, 10)
-    term.setTextColor(colors.red)
-    write("[ NO ]")
-    
-    while true do
-        local event, btn, x, y = os.pullEvent("mouse_click")
-        if y == 10 then
-            -- YES
-            if x >= 2 and x <= 8 then
-                term.clear()
-                term.setCursorPos(1,5)
-                term.setTextColor(colors.lime)
-                print("alright.. taking")
-                print("you to the roof...")
-                sleep(3)
-                term.clear()
-                term.setCursorPos(1,5)
-                term.setTextColor(colors.red)
-                print("just kidding.")
-                sleep(2)
-                return
-            -- NO
-            elseif x >= 15 and x <= 20 then
-                return
-            end
-        end
-    end
-end
-
--- SECURITY
-local function runPinProcess(target)
-    term.setBackgroundColor(c_bg)
-    term.clear()
-    term.setCursorPos(1,1)
-    print("SECURE: " .. target.name)
-    print("Enter PIN:")
-    term.setTextColor(colors.yellow)
-    write("> ")
-    local pin = read("*")
-    
-    if pin == target.pin then
-        return true
-    else
-        runTrollSequence()
-        return false
-    end
-end
-
--- MAIN LOOP
-while true do
-    drawMenu()
-    local event, btn, x, y = os.pullEvent("mouse_click")
-    
-    local selected = nil
-    local isScan = false 
-    
-    local listIdx = (y - 3) / 2
-    if listIdx == math.floor(listIdx) and floors[listIdx] then
-        selected = listIdx
-        isScan = false
-    end
-    
-    if y == 16 then
-        local found = scanForFloor()
-        if found then
-            term.setCursorPos(2, 18)
-            term.setTextColor(colors.lime)
-            write("Found: " .. floors[found].name)
-            sleep(1)
-            selected = found
-            isScan = true
-        else
-            term.setCursorPos(2, 18)
-            term.setTextColor(colors.red)
-            write("No Signal Found!")
-            sleep(1)
-        end
-    end
-    
-    if selected then
-        local target = floors[selected]
-        local authorized = true
-        
-        if target.locked and not isScan then
-            authorized = runPinProcess(target)
+        elseif event == "mouse_scroll" then
+            if p1 > 0 and scroll + (h-2) < #floorList then scroll = scroll + 1; drawList()
+            elseif p1 < 0 and scroll > 0 then scroll = scroll - 1; drawList() end
         end
         
-        if authorized then
-            rednet.broadcast({ floor = selected }, "elevator_cmd")
-            term.clear()
-            term.setCursorPos(1,5)
-            term.setTextColor(colors.lime)
-            print("ELEVATOR COMING")
-            print("TO: "..target.name)
-            sleep(2)
+    elseif state == "pin" then
+        if event == "char" then
+            if #pinBuf < 4 then pinBuf = pinBuf .. p1; drawPin() end
+            if pinBuf == PIN_CODE then send(target) end
+        elseif event == "key" and p1 == keys.backspace then
+            pinBuf = string.sub(pinBuf, 1, -2); drawPin()
+        elseif event == "mouse_click" then
+            state = "list"; drawList() -- Click to cancel
         end
     end
 end
