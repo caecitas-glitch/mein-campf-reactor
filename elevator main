@@ -1,66 +1,50 @@
--- MASTER SERVER (Wireless + Wired Hub)
--- Run this on Computer A
+-- MASTER SERVER (ID: 6)
+peripheral.find("modem", rednet.open)
 
--- HARDWARE SETUP:
--- Top: Wireless Modem
--- Back: Wired Modem (To Slaves)
--- Front/Left/Right/Bottom: Redstone Links
-
-peripheral.find("modem", rednet.open) -- Open all modems
-
--- [!] CONFIGURATION - UPDATE THESE IDS! [!]
-local SLAVE_1_ID = 11  -- ID of Slave Computer B
-local SLAVE_2_ID = 12  -- ID of Slave Computer C
+-- [!] HARDCODED IDS [!]
+local SLAVE_1_ID = 4  -- Slave A
+local SLAVE_2_ID = 5  -- Slave B
 
 -- FLOOR MAPPING
--- This tells the system where the Redstone Link is for each floor.
 local floors = {
-    -- MASTER (Computer A) Handles Floors -2 to 1
+    -- MASTER (ID 6) Handles Floors -2 to 1
     [-2] = { type="local", side="front" },
     [-1] = { type="local", side="left" },
     [0]  = { type="local", side="right" },
     [1]  = { type="local", side="bottom" },
 
-    -- SLAVE 1 (Computer B) Handles Floors 2 to 6
+    -- SLAVE A (ID 4) Handles Floors 2 to 6
     [2]  = { type="remote", target=SLAVE_1_ID, side="top" },
     [3]  = { type="remote", target=SLAVE_1_ID, side="front" },
     [4]  = { type="remote", target=SLAVE_1_ID, side="left" },
     [5]  = { type="remote", target=SLAVE_1_ID, side="right" },
     [6]  = { type="remote", target=SLAVE_1_ID, side="bottom" },
 
-    -- SLAVE 2 (Computer C) Handles Floors 7 to 10
+    -- SLAVE B (ID 5) Handles Floors 7 to 10
     [7]  = { type="remote", target=SLAVE_2_ID, side="top" },
     [8]  = { type="remote", target=SLAVE_2_ID, side="front" },
     [9]  = { type="remote", target=SLAVE_2_ID, side="left" },
     [10] = { type="remote", target=SLAVE_2_ID, side="right" },
 }
 
-print("-----------------------------")
-print("MASTER SERVER RUNNING")
-print("ID: " .. os.getComputerID())
-print("-----------------------------")
+print("MASTER SERVER (ID 6) RUNNING")
 
 local function trigger(floor)
     local data = floors[floor]
-    if not data then print("Error: No config for Floor "..floor) return end
-
-    print("Request: Floor " .. floor)
+    if not data then return end
+    print("Activating Floor " .. floor)
 
     if data.type == "local" then
-        -- Pulse my own side
         redstone.setOutput(data.side, true)
         sleep(1.0)
         redstone.setOutput(data.side, false)
     elseif data.type == "remote" then
-        -- Tell Slave to pulse
         rednet.send(data.target, {side=data.side}, "internal_bus")
     end
 end
 
 while true do
-    -- Listen for Wireless requests from Hallway Screens
-    local id, msg, proto = rednet.receive("elevator_request")
-    
+    local id, msg = rednet.receive("elevator_request")
     if type(msg) == "table" and msg.floor then
         trigger(msg.floor)
     end
