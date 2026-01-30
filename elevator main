@@ -1,223 +1,67 @@
--- SCROLLABLE ELEVATOR CONTROLLER
--- Supports: 15+ Floors, Negative Floors, Security, HD Scaling
+-- MASTER SERVER (Wireless + Wired Hub)
+-- Run this on Computer A
 
--- 1. CONFIGURATION
-local SECRET_PIN = "7777" -- Password for -1 and -2
+-- HARDWARE SETUP:
+-- Top: Wireless Modem
+-- Back: Wired Modem (To Slaves)
+-- Front/Left/Right/Bottom: Redstone Links
 
--- Define your floors here (Order matters: Bottom to Top)
-local floor_list = {
-    { id = -2, name = "Deep Storage", locked = true },
-    { id = -1, name = "Vault",        locked = true },
-    { id = 1,  name = "Lobby",        locked = false },
-    { id = 2,  name = "Offices",      locked = false },
-    { id = 3,  name = "Apartments",   locked = false },
-    { id = 4,  name = "Gym",          locked = false },
-    { id = 5,  name = "Pool",         locked = false },
-    { id = 6,  name = "Cafe",         locked = false },
-    { id = 7,  name = "Lab",          locked = false },
-    { id = 8,  name = "Server Room",  locked = false },
-    { id = 9,  name = "Reactor",      locked = false },
-    { id = 10, name = "Maintenance",  locked = false },
-    { id = 11, name = "Penthouse",    locked = false },
-    { id = 12, name = "Roof Access",  locked = false },
-    { id = 13, name = "Observation",  locked = false },
+peripheral.find("modem", rednet.open) -- Open all modems
+
+-- [!] CONFIGURATION - UPDATE THESE IDS! [!]
+local SLAVE_1_ID = 11  -- ID of Slave Computer B
+local SLAVE_2_ID = 12  -- ID of Slave Computer C
+
+-- FLOOR MAPPING
+-- This tells the system where the Redstone Link is for each floor.
+local floors = {
+    -- MASTER (Computer A) Handles Floors -2 to 1
+    [-2] = { type="local", side="front" },
+    [-1] = { type="local", side="left" },
+    [0]  = { type="local", side="right" },
+    [1]  = { type="local", side="bottom" },
+
+    -- SLAVE 1 (Computer B) Handles Floors 2 to 6
+    [2]  = { type="remote", target=SLAVE_1_ID, side="top" },
+    [3]  = { type="remote", target=SLAVE_1_ID, side="front" },
+    [4]  = { type="remote", target=SLAVE_1_ID, side="left" },
+    [5]  = { type="remote", target=SLAVE_1_ID, side="right" },
+    [6]  = { type="remote", target=SLAVE_1_ID, side="bottom" },
+
+    -- SLAVE 2 (Computer C) Handles Floors 7 to 10
+    [7]  = { type="remote", target=SLAVE_2_ID, side="top" },
+    [8]  = { type="remote", target=SLAVE_2_ID, side="front" },
+    [9]  = { type="remote", target=SLAVE_2_ID, side="left" },
+    [10] = { type="remote", target=SLAVE_2_ID, side="right" },
 }
 
--- 2. SETUP
-local mon = peripheral.find("monitor")
-if not mon then error("No Monitor Found") end
-mon.setTextScale(0.5) -- HD Mode
-local w, h = mon.getSize()
+print("-----------------------------")
+print("MASTER SERVER RUNNING")
+print("ID: " .. os.getComputerID())
+print("-----------------------------")
 
--- Open Rednet (for communicating with the elevator pulley)
-local sides = rs.getSides()
-for _, side in pairs(sides) do
-    if peripheral.getType(side) == "modem" then
-        rednet.open(side)
-        break
+local function trigger(floor)
+    local data = floors[floor]
+    if not data then print("Error: No config for Floor "..floor) return end
+
+    print("Request: Floor " .. floor)
+
+    if data.type == "local" then
+        -- Pulse my own side
+        redstone.setOutput(data.side, true)
+        sleep(1.0)
+        redstone.setOutput(data.side, false)
+    elseif data.type == "remote" then
+        -- Tell Slave to pulse
+        rednet.send(data.target, {side=data.side}, "internal_bus")
     end
 end
-
--- 3. THEME
-local colors_bg = colors.gray
-local colors_btn = colors.black
-local colors_text = colors.white
-local colors_lock = colors.red
-local colors_header = colors.cyan
-
--- 4. SCROLL VARIABLES
-local scroll_offset = 0     -- How far down we have scrolled
-local btn_height = 3        -- Height of each button
-local list_start_y = 5      -- Where the list starts
-local list_end_y = h - 2    -- Where the list ends
-local visible_count = math.floor((list_end_y - list_start_y) / btn_height)
-
--- 5. DRAWING HELPERS
-local function clear()
-    mon.setBackgroundColor(colors_bg)
-    mon.clear()
-end
-
-local function drawBox(x, y, width, height, color)
-    mon.setBackgroundColor(color)
-    for i = 0, height-1 do
-        mon.setCursorPos(x, y + i)
-        mon.write(string.rep(" ", width))
-    end
-end
-
-local function centerText(y, text, fg, bg)
-    if bg then mon.setBackgroundColor(bg) end
-    local x = math.floor((w - #text) / 2) + 1
-    mon.setCursorPos(x, y)
-    mon.setTextColor(fg)
-    mon.write(text)
-end
-
--- 6. MAIN UI (SCROLLABLE)
-local function drawUI(status)
-    clear()
-    
-    -- Header
-    drawBox(1, 1, w, 3, colors_header)
-    centerText(2, "ELEVATOR OS", colors.black, colors_header)
-    
-    -- Scroll Arrows (Right Side)
-    if #floor_list > visible_count then
-        mon.setBackgroundColor(colors.lightGray)
-        mon.setTextColor(colors.black)
-        -- Up Arrow
-        mon.setCursorPos(w-2, list_start_y)
-        mon.write("^")
-        -- Down Arrow
-        mon.setCursorPos(w-2, list_end_y - 1)
-        mon.write("v")
-    end
-
-    -- Draw Visible Buttons
-    for i = 1, visible_count do
-        local index = i + scroll_offset
-        if index <= #floor_list then
-            local f = floor_list[index]
-            local y = list_start_y + ((i-1) * btn_height)
-            
-            -- Button Box
-            drawBox(2, y, w-5, btn_height-1, colors_btn)
-            
-            -- Text
-            mon.setCursorPos(4, y+1)
-            if f.locked then
-                mon.setTextColor(colors_lock)
-                mon.write(f.id .. ". " .. f.name .. " [L]")
-            else
-                mon.setTextColor(colors_text)
-                mon.write(f.id .. ". " .. f.name)
-            end
-        end
-    end
-    
-    -- Footer Status
-    centerText(h, status or "IDLE", colors.lightGray, colors_bg)
-end
-
--- 7. SECURITY KEYPAD
-local function runKeypad(floorName)
-    local code = ""
-    while true do
-        clear()
-        drawBox(1, 1, w, 3, colors_lock)
-        centerText(2, "SECURE ACCESS: " .. floorName, colors.white, colors_lock)
-        
-        centerText(6, "ENTER PIN:", colors.white)
-        centerText(8, string.rep("*", #code), colors.yellow)
-        
-        -- Draw Numpad
-        local keys = { 
-            {'1','2','3'}, 
-            {'4','5','6'}, 
-            {'7','8','9'}, 
-            {'C','0','OK'} 
-        }
-        
-        local startX = math.floor((w - 14)/2) + 1
-        local startY = 10
-        
-        for r, row in ipairs(keys) do
-            for c, key in ipairs(row) do
-                local bx = startX + (c-1)*5
-                local by = startY + (r-1)*3
-                drawBox(bx, by, 4, 2, colors.lightGray)
-                mon.setCursorPos(bx+1, by)
-                mon.setTextColor(colors.black)
-                mon.write(key)
-            end
-        end
-        
-        local e, s, x, y = os.pullEvent("monitor_touch")
-        
-        -- Check Keypad Clicks
-        if y >= startY then
-            local row = math.floor((y - startY)/3) + 1
-            local col = math.floor((x - startX)/5) + 1
-            if row >=1 and row <=4 and col >=1 and col <=3 then
-                local k = keys[row][col]
-                if k == 'C' then code = ""
-                elseif k == 'OK' then
-                    if code == SECRET_PIN then return true else return false end
-                else
-                    if #code < 4 then code = code .. k end
-                end
-            end
-        end
-    end
-end
-
--- 8. MAIN LOOP
-drawUI("READY")
 
 while true do
-    local event, side, x, y = os.pullEvent("monitor_touch")
+    -- Listen for Wireless requests from Hallway Screens
+    local id, msg, proto = rednet.receive("elevator_request")
     
-    -- Check Scroll Buttons (Right Side strip)
-    if x >= w-3 then
-        if y < h/2 and scroll_offset > 0 then
-            scroll_offset = scroll_offset - 1
-            drawUI("SCROLLING...")
-        elseif y >= h/2 and (scroll_offset + visible_count) < #floor_list then
-            scroll_offset = scroll_offset + 1
-            drawUI("SCROLLING...")
-        end
-    
-    -- Check Floor Buttons
-    elseif y >= list_start_y and y < list_end_y then
-        -- Calculate which button index was clicked relative to the screen
-        local relative_index = math.floor((y - list_start_y) / btn_height) + 1
-        local actual_index = relative_index + scroll_offset
-        
-        if floor_list[actual_index] then
-            local target = floor_list[actual_index]
-            
-            -- Animate Click
-            local btnY = list_start_y + ((relative_index-1) * btn_height)
-            drawBox(2, btnY, w-5, btn_height-1, colors.lime)
-            sleep(0.1)
-            
-            local access = true
-            if target.locked then
-                access = runKeypad(target.name)
-            end
-            
-            if access then
-                drawUI("CALLING: " .. target.name)
-                -- Send the floor ID to your elevator motor computer
-                rednet.broadcast({ floor = target.id }, "elevator_cmd")
-                sleep(1)
-                drawUI("MOVING...")
-            else
-                drawUI("ACCESS DENIED")
-                sleep(1)
-                drawUI("READY")
-            end
-        end
+    if type(msg) == "table" and msg.floor then
+        trigger(msg.floor)
     end
 end
