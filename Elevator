@@ -1,36 +1,43 @@
--- HALLWAY CLIENT (Screen + Wireless)
+-- HALLWAY CLIENT (Touch Keypad Version)
 local monitor = peripheral.find("monitor")
-peripheral.find("modem", rednet.open) -- Open Wireless Modem
+peripheral.find("modem", rednet.open)
 
 -- [!] CONFIGURATION [!]
-local SERVER_ID = 10     -- CHANGE THIS to your Master Server ID
-local PIN_CODE = "1234"  -- Security PIN
+local SERVER_ID = 6      -- Hardcoded Master ID
+local PIN_CODE = "1234"  -- Your Password
 local lockedFloors = { [-1]=true, [-2]=true }
 
--- GLOBAL VARS
-local allFloors = {-2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-monitor.setTextScale(0.5) -- 0.5 Scale fits more buttons on 3x3
+-- UI VARS
+monitor.setTextScale(0.5)
 local w, h = monitor.getSize()
-local state = "main" -- 'main', 'pin', 'moving'
+local state = "main" 
 local targetFloor = nil
 local pinBuffer = ""
+local allFloors = {-2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 
 -- DRAWING UTILS
 local function clear(c) monitor.setBackgroundColor(c); monitor.clear() end
-local function center(y, text, bg, fg)
+
+local function drawButton(x, y, w, h, text, bg, fg)
     monitor.setBackgroundColor(bg)
     monitor.setTextColor(fg)
-    monitor.setCursorPos(math.floor((w-#text)/2)+1, y)
+    for i=0, h-1 do
+        monitor.setCursorPos(x, y+i)
+        monitor.write(string.rep(" ", w))
+    end
+    monitor.setCursorPos(x + math.floor((w-#text)/2), y + math.floor(h/2))
     monitor.write(text)
 end
 
+-- SCENE: MAIN MENU
 local function drawMain()
     clear(colors.black)
-    center(2, "ELEVATOR CONTROL", colors.black, colors.white)
+    monitor.setCursorPos(math.floor((w-16)/2)+1, 2)
+    monitor.setTextColor(colors.white)
+    monitor.write("ELEVATOR CONTROL")
     
     local startX, startY = 3, 5
-    local btnW, btnH = 6, 3
-    local gap = 1
+    local btnW, btnH, gap = 6, 3, 1
     
     for i, floor in ipairs(allFloors) do
         local col = (i-1) % 5
@@ -38,51 +45,68 @@ local function drawMain()
         local x = startX + (col * (btnW + gap))
         local y = startY + (row * (btnH + gap))
         
-        local bg = colors.blue
-        if lockedFloors[floor] then bg = colors.red end
+        local color = colors.blue
+        if lockedFloors[floor] then color = colors.red end
         
-        -- Draw Box
-        monitor.setBackgroundColor(bg)
-        monitor.setTextColor(colors.white)
-        for k=0, btnH-1 do
-            monitor.setCursorPos(x, y+k)
-            monitor.write(string.rep(" ", btnW))
-        end
-        -- Draw Number
-        monitor.setCursorPos(x + math.floor((btnW-(#tostring(floor)))/2), y + math.floor(btnH/2))
-        monitor.write(tostring(floor))
+        drawButton(x, y, btnW, btnH, tostring(floor), color, colors.white)
     end
 end
 
+-- SCENE: NUMPAD KEYPAD
 local function drawPin()
     clear(colors.gray)
-    center(4, "SECURE ACCESS", colors.gray, colors.red)
-    center(6, "FLOOR: " .. tostring(targetFloor), colors.gray, colors.white)
+    monitor.setCursorPos(math.floor((w-15)/2)+1, 3)
+    monitor.setTextColor(colors.red)
+    monitor.write("LOCKED ACCESS")
     
-    monitor.setCursorPos(math.floor(w/2)-3, 9)
+    -- PIN Display Box
+    local dispX = math.floor(w/2) - 4
     monitor.setBackgroundColor(colors.black)
+    monitor.setTextColor(colors.white)
+    monitor.setCursorPos(dispX, 5)
     monitor.write(" " .. string.rep("*", #pinBuffer) .. "_ ")
     
-    center(h-2, "Type PIN on Keyboard", colors.gray, colors.lightGray)
+    -- Draw Numpad Grid
+    local keys = {"1","2","3","4","5","6","7","8","9","C","0","OK"}
+    local startX = math.floor(w/2) - 6
+    local startY = 8
+    local btnW, btnH = 3, 2
+    local gap = 1
+    
+    for i, key in ipairs(keys) do
+        local col = (i-1)%3
+        local row = math.floor((i-1)/3)
+        local x = startX + (col * (btnW + gap))
+        local y = startY + (row * (btnH + gap))
+        
+        local bg = colors.lightGray
+        if key == "C" then bg = colors.orange end
+        if key == "OK" then bg = colors.lime end
+        
+        drawButton(x, y, btnW, btnH, key, bg, colors.black)
+    end
 end
 
+-- LOGIC
 local function sendRequest(f)
     clear(colors.black)
-    center(h/2, "CALLING FLOOR " .. f, colors.black, colors.yellow)
+    monitor.setCursorPos(math.floor((w-15)/2)+1, h/2)
+    monitor.setTextColor(colors.yellow)
+    monitor.write("CALLING FLOOR " .. f)
     rednet.send(SERVER_ID, {floor=f}, "elevator_request")
-    sleep(2)
+    sleep(1.5)
     state = "main"
     pinBuffer = ""
     drawMain()
 end
 
--- MAIN LOOP
 drawMain()
 
 while true do
+    local event, side, x, y = os.pullEvent("monitor_touch")
+    
     if state == "main" then
-        local event, side, x, y = os.pullEvent("monitor_touch")
-        -- Hit detection
+        -- Main Menu Hit Detection
         local startX, startY = 3, 5
         local btnW, btnH, gap = 6, 3, 1
         
@@ -105,29 +129,48 @@ while true do
         end
         
     elseif state == "pin" then
-        local event, char = os.pullEvent()
+        -- Keypad Hit Detection
+        local keys = {"1","2","3","4","5","6","7","8","9","C","0","OK"}
+        local startX = math.floor(w/2) - 6
+        local startY = 8
+        local btnW, btnH, gap = 3, 2, 1
         
-        -- Handle typing
-        if event == "char" then
-            if #pinBuffer < 4 then
-                pinBuffer = pinBuffer .. char
-                drawPin()
+        for i, key in ipairs(keys) do
+            local col = (i-1)%3
+            local row = math.floor((i-1)/3)
+            local bx = startX + (col * (btnW + gap))
+            local by = startY + (row * (btnH + gap))
+            
+            if x >= bx and x < bx+btnW and y >= by and y < by+btnH then
+                if key == "C" then
+                    -- Clear / Cancel
+                    if #pinBuffer > 0 then
+                        pinBuffer = ""
+                        drawPin()
+                    else
+                        state = "main"
+                        drawMain()
+                    end
+                elseif key == "OK" then
+                    -- Submit
+                    if pinBuffer == PIN_CODE then
+                        sendRequest(targetFloor)
+                    else
+                        monitor.setBackgroundColor(colors.red)
+                        monitor.setCursorPos(math.floor(w/2) - 4, 5)
+                        monitor.write(" ERROR! ")
+                        sleep(0.5)
+                        pinBuffer = ""
+                        drawPin()
+                    end
+                else
+                    -- Number buttons
+                    if #pinBuffer < 4 then
+                        pinBuffer = pinBuffer .. key
+                        drawPin()
+                    end
+                end
             end
-            if pinBuffer == PIN_CODE then
-                sendRequest(targetFloor)
-            end
-        end
-        
-        -- Handle backspace
-        if event == "key" and char == keys.backspace then
-            pinBuffer = string.sub(pinBuffer, 1, -2)
-            drawPin()
-        end
-        
-        -- Handle monitor touch to cancel
-        if event == "monitor_touch" then
-            state = "main"
-            drawMain()
         end
     end
 end
